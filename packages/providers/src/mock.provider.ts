@@ -3,6 +3,7 @@ import type {
   AIProviderContext,
   AIProviderRequest,
 } from "@ak-vision-ai/ai-core";
+
 import type {
   AIResponse,
   AITaskType,
@@ -12,8 +13,20 @@ export class MockProvider implements AIProvider {
   readonly providerId = "mock";
   readonly providerName = "Mock Provider";
 
+  readonly status = "active" as const;
+
+  readonly capabilities = [
+    "chat",
+  ] as const;
+
   supports(taskType: AITaskType): boolean {
     return taskType === "chat";
+  }
+
+  supportsCapability(capability: (typeof this.capabilities)[number]): boolean {
+    return this.capabilities.includes(
+      capability as (typeof this.capabilities)[number],
+    );
   }
 
   async generate<T = unknown>(

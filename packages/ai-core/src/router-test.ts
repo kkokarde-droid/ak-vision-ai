@@ -1,17 +1,26 @@
 import { AIRouter } from "./router.js";
 import { ProviderRegistry } from "./registry.js";
+
 import type {
   AIProvider,
   AIProviderContext,
   AIProviderRequest,
 } from "./provider.js";
+
 import type {
   AIRequest,
   AIResponse,
   AITaskType,
+  ProviderCapability,
 } from "@ak-vision-ai/types";
 
 class TestProvider implements AIProvider {
+  public readonly status = "active" as const;
+
+  public readonly capabilities: readonly ProviderCapability[] = [
+    "chat",
+  ];
+
   constructor(
     public readonly providerId: string,
     public readonly providerName: string,
@@ -20,6 +29,10 @@ class TestProvider implements AIProvider {
 
   supports(taskType: AITaskType): boolean {
     return this.supportedTasks.includes(taskType);
+  }
+
+  supportsCapability(capability: ProviderCapability): boolean {
+    return this.capabilities.includes(capability);
   }
 
   async generate<T = unknown>(

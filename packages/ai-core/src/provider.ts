@@ -2,6 +2,8 @@ import type {
   AIRequest,
   AIResponse,
   AITaskType,
+  ProviderCapability,
+  ProviderStatus,
 } from "@ak-vision-ai/types";
 
 export interface AIProviderRequest {
@@ -19,7 +21,13 @@ export interface AIProvider {
   readonly providerId: string;
   readonly providerName: string;
 
+  readonly status: ProviderStatus;
+
+  readonly capabilities: readonly ProviderCapability[];
+
   supports(taskType: AITaskType): boolean;
+
+  supportsCapability(capability: ProviderCapability): boolean;
 
   generate<T = unknown>(
     input: AIProviderRequest,
