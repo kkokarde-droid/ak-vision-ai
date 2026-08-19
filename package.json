@@ -1,0 +1,35 @@
+{
+  "name": "ak-vision-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AK Vision AI — AI that can actually get work done.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "packageManager": "npm@11.17.0",
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=24.19.0",
+    "npm": ">=11.17.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.21.0",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.23.0"
+  }
+}

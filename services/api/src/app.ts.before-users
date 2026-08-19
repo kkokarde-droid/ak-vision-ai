@@ -1,0 +1,58 @@
+﻿import Fastify from "fastify";
+import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
+import sensible from "@fastify/sensible";
+import { db } from "@ak-vision-ai/database";
+import { sql } from "drizzle-orm";
+
+export function buildApp() {
+  const app = Fastify({
+    logger: true,
+  });
+
+  app.register(helmet);
+
+  app.register(cors, {
+    origin: true,
+  });
+
+  app.register(sensible);
+
+  app.get("/health", async () => {
+    return {
+      status: "ok",
+      service: "ak-vision-ai-api",
+      timestamp: new Date().toISOString(),
+    };
+  });
+
+  app.get("/health/db", async (_request, reply) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT
+          current_database() AS database,
+          current_user AS user_name
+      `);
+
+      return {
+        status: "ok",
+        service: "ak-vision-ai-api",
+        database: "ok",
+        databaseName: result.rows[0]?.database,
+        databaseUser: result.rows[0]?.user_name,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      app.log.error(error);
+
+      return reply.code(503).send({
+        status: "error",
+        service: "ak-vision-ai-api",
+        database: "error",
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
+
+  return app;
+}
