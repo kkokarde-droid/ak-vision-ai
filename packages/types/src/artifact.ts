@@ -1,4 +1,4 @@
-﻿import type { ID, ISODateString } from "./common.js";
+import type { ID, ISODateString } from "./common.js";
 
 export type ArtifactType =
   | "document"

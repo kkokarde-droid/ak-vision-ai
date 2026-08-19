@@ -1,4 +1,4 @@
-﻿import type { ID, ISODateString, CurrencyCode } from "./common.js";
+import type { ID, ISODateString, CurrencyCode } from "./common.js";
 
 export type CreditTransactionType =
   | "grant"
