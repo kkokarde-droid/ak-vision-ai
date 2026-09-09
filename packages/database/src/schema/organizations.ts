@@ -1,4 +1,4 @@
-﻿import {
+import {
   index,
   pgTable,
   uniqueIndex,
@@ -19,6 +19,7 @@ export const organizations = pgTable(
   "organizations",
   {
     id,
+
     name: varchar("name", {
       length: 200,
     }).notNull(),
@@ -34,8 +35,11 @@ export const organizations = pgTable(
     updatedAt,
   },
   (table) => [
-    index("organizations_owner_user_idx").on(table.ownerUserId),
-    index("organizations_created_at_idx").on(table.createdAt),
+    index("organizations_owner_user_idx")
+      .on(table.ownerUserId),
+
+    index("organizations_created_at_idx")
+      .on(table.createdAt),
   ],
 );
 
@@ -77,8 +81,11 @@ export const organizationMemberships = pgTable(
   ],
 );
 
-export type Organization = typeof organizations.$inferSelect;
-export type NewOrganization = typeof organizations.$inferInsert;
+export type Organization =
+  typeof organizations.$inferSelect;
+
+export type NewOrganization =
+  typeof organizations.$inferInsert;
 
 export type OrganizationMembership =
   typeof organizationMemberships.$inferSelect;

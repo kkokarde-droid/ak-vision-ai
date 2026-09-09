@@ -1,6 +1,29 @@
-﻿{
-  "name": "@ak-vision-ai/worker",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module"
+{
+    "name": "@ak-vision-ai/worker",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "main": "./dist/index.js",
+    "scripts": {
+        "dev": "tsx watch src/index.ts",
+        "build": "tsc -p tsconfig.json",
+        "start": "node dist/index.js",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "test": "node --env-file=../../.env --import tsx --test src/**/*.test.ts"
+    },
+    "dependencies": {
+        "@ak-vision-ai/ai-core": "file:../../packages/ai-core",
+        "@ak-vision-ai/credits": "file:../../packages/credits",
+        "@ak-vision-ai/database": "file:../../packages/database",
+        "@ak-vision-ai/generation": "file:../../packages/generation",
+        "@ak-vision-ai/media": "file:../../packages/media",
+        "@ak-vision-ai/providers": "file:../../packages/providers",
+        "@ak-vision-ai/storage": "file:../../packages/storage",
+        "@ak-vision-ai/types": "file:../../packages/types"
+    },
+    "devDependencies": {
+        "@types/node": "^26.2.0",
+        "tsx": "^4.23.12",
+        "typescript": "^7.0.2"
+    }
 }

@@ -30,7 +30,8 @@ export interface Artifact {
   ownerUserId: ID;
   organizationId?: ID;
   name: string;
-  type: ArtifactType;
+    storageKey?: string;
+type: ArtifactType;
   status: ArtifactStatus;
   version: number;
   mimeType?: string;

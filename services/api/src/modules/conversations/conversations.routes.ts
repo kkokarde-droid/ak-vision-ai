@@ -1,46 +1,177 @@
-﻿import type { FastifyInstance } from "fastify";
-import { and, eq } from "drizzle-orm";
+import type { FastifyInstance } from "fastify";
+import { and, eq, inArray } from "drizzle-orm";
 
 import {
   db,
   conversations,
   organizationMemberships,
   projects,
-  users,
 } from "@ak-vision-ai/database";
 
-type ConversationStatus = "active" | "archived" | "deleted";
+import { authenticate } from "../../common/auth/auth.guard.js";
 
-export async function conversationsRoutes(app: FastifyInstance) {
+import {
+  CreateConversationBodySchema,
+  UpdateConversationBodySchema,
+} from "../../common/schemas/conversations.schemas.js";
+import { UuidParamSchema } from "../../common/schemas/common.schemas.js";
+
+import {
+  getConversationAccess,
+  canManageConversation,
+} from "../../common/auth/conversation-access.js";
+
+import {
+  getProjectAccess,
+} from "../../common/auth/project-access.js";
+
+type ConversationStatus =
+  | "active"
+  | "archived"
+  | "deleted";
+
+export async function conversationsRoutes(
+  app: FastifyInstance,
+) {
+  app.addHook(
+    "preHandler",
+    authenticate,
+  );
+
   // GET /api/v1/conversations
-  app.get("/", async () => {
-    const result = await db
-      .select()
-      .from(conversations)
-      .orderBy(conversations.createdAt);
+  app.get(
+    "/",
+    async (request) => {
+      const actor = request.auth!;
 
-    return {
-      status: "ok",
-      data: result,
-    };
-  });
+      const memberships =
+        await db
+          .select({
+            organizationId:
+              organizationMemberships.organizationId,
+          })
+          .from(
+            organizationMemberships,
+          )
+          .where(
+            eq(
+              organizationMemberships.userId,
+              actor.userId,
+            ),
+          );
+
+      const organizationIds =
+        memberships.map(
+          (row) =>
+            row.organizationId,
+        );
+
+      const predicates = [];
+
+      if (
+        organizationIds.length > 0
+      ) {
+        predicates.push(
+          inArray(
+            projects.organizationId,
+            organizationIds,
+          ),
+        );
+      }
+
+      predicates.push(
+        eq(
+          conversations.userId,
+          actor.userId,
+        ),
+      );
+
+      const result =
+        await db
+          .select({
+            id: conversations.id,
+            projectId:
+              conversations.projectId,
+            userId:
+              conversations.userId,
+            title:
+              conversations.title,
+            status:
+              conversations.status,
+            createdAt:
+              conversations.createdAt,
+            updatedAt:
+              conversations.updatedAt,
+          })
+          .from(conversations)
+          .innerJoin(
+            projects,
+            eq(
+              projects.id,
+              conversations.projectId,
+            ),
+          )
+          .where(
+            and(...predicates),
+          )
+          .orderBy(
+            conversations.createdAt,
+          );
+
+      return {
+        status: "ok",
+        data: result,
+      };
+    },
+  );
 
   // GET /api/v1/conversations/:id
-  app.get<{ Params: { id: string } }>(
+  app.get<{
+    Params: {
+      id: string;
+    };
+  }>(
     "/:id",
+    {
+      schema: {
+        params: UuidParamSchema,
+      },
+    },
     async (request, reply) => {
-      const result = await db
-        .select()
-        .from(conversations)
-        .where(eq(conversations.id, request.params.id))
-        .limit(1);
+      const access =
+        await getConversationAccess(
+          request.auth!.userId,
+          request.params.id,
+        );
 
-      const conversation = result[0];
+      if (!access) {
+        return reply.code(404).send({
+          status: "error",
+          message:
+            "Conversation not found",
+        });
+      }
+
+      const result =
+        await db
+          .select()
+          .from(conversations)
+          .where(
+            eq(
+              conversations.id,
+              request.params.id,
+            ),
+          )
+          .limit(1);
+
+      const conversation =
+        result[0];
 
       if (!conversation) {
         return reply.code(404).send({
           status: "error",
-          message: "Conversation not found",
+          message:
+            "Conversation not found",
         });
       }
 
@@ -55,99 +186,83 @@ export async function conversationsRoutes(app: FastifyInstance) {
   app.post<{
     Body: {
       projectId: string;
-      userId: string;
       title: string;
       status?: ConversationStatus;
     };
-  }>("/", async (request, reply) => {
-    const {
-      projectId,
-      userId,
-      title,
-      status = "active",
-    } = request.body;
+  }>(
+    "/",
+    {
+      schema: {
+        body: CreateConversationBodySchema,
+      },
+    },
+    async (request, reply) => {
+      const actor = request.auth!;
 
-    if (!projectId || !userId || !title) {
-      return reply.code(400).send({
-        status: "error",
-        message: "projectId, userId and title are required",
-      });
-    }
-
-    // Verify project exists
-    const projectResult = await db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-
-    const project = projectResult[0];
-
-    if (!project) {
-      return reply.code(404).send({
-        status: "error",
-        message: "Project not found",
-      });
-    }
-
-    // Verify user exists
-    const userResult = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-
-    const user = userResult[0];
-
-    if (!user) {
-      return reply.code(404).send({
-        status: "error",
-        message: "User not found",
-      });
-    }
-
-    // Check whether the user is the project owner
-    const isProjectOwner = project.ownerUserId === userId;
-
-    // Check organization membership
-    const membershipResult = await db
-      .select()
-      .from(organizationMemberships)
-      .where(
-        and(
-          eq(
-            organizationMemberships.organizationId,
-            project.organizationId,
-          ),
-          eq(organizationMemberships.userId, userId),
-        ),
-      )
-      .limit(1);
-
-    const isOrganizationMember = Boolean(membershipResult[0]);
-
-    if (!isProjectOwner && !isOrganizationMember) {
-      return reply.code(403).send({
-        status: "error",
-        message: "User does not have access to this project",
-      });
-    }
-
-    const result = await db
-      .insert(conversations)
-      .values({
+      const {
         projectId,
-        userId,
         title,
-        status,
-      })
-      .returning();
+        status = "active",
+      } = request.body;
 
-    return reply.code(201).send({
-      status: "ok",
-      data: result[0],
-    });
-  });
+      const normalizedTitle =
+        title?.trim();
+
+      if (
+        !projectId ||
+        !normalizedTitle
+      ) {
+        return reply.code(400).send({
+          status: "error",
+          message:
+            "projectId and title are required",
+        });
+      }
+
+      const project =
+        await getProjectAccess(
+          actor.userId,
+          projectId,
+        );
+
+      if (!project) {
+        return reply.code(404).send({
+          status: "error",
+          message:
+            "Project not found",
+        });
+      }
+
+      const result =
+        await db
+          .insert(conversations)
+          .values({
+            projectId,
+            userId:
+              actor.userId,
+            title:
+              normalizedTitle,
+            status,
+          })
+          .returning();
+
+      const conversation =
+        result[0];
+
+      if (!conversation) {
+        return reply.code(500).send({
+          status: "error",
+          message:
+            "Failed to create conversation",
+        });
+      }
+
+      return reply.code(201).send({
+        status: "ok",
+        data: conversation,
+      });
+    },
+  );
 
   // PATCH /api/v1/conversations/:id
   app.patch<{
@@ -160,28 +275,52 @@ export async function conversationsRoutes(app: FastifyInstance) {
     };
   }>(
     "/:id",
+    {
+      schema: {
+        params: UuidParamSchema,
+        body: UpdateConversationBodySchema,
+      },
+    },
     async (request, reply) => {
-      const existingResult = await db
-        .select()
-        .from(conversations)
-        .where(eq(conversations.id, request.params.id))
-        .limit(1);
+      const actor = request.auth!;
 
-      const existingConversation = existingResult[0];
+      const access =
+        await getConversationAccess(
+          actor.userId,
+          request.params.id,
+        );
 
-      if (!existingConversation) {
+      if (!access) {
         return reply.code(404).send({
           status: "error",
-          message: "Conversation not found",
+          message:
+            "Conversation not found",
         });
       }
 
-      const { title, status } = request.body;
+      if (
+        !canManageConversation(access)
+      ) {
+        return reply.code(403).send({
+          status: "error",
+          message:
+            "Conversation management access denied",
+        });
+      }
 
-      if (title === undefined && status === undefined) {
+      const {
+        title,
+        status,
+      } = request.body;
+
+      if (
+        title === undefined &&
+        status === undefined
+      ) {
         return reply.code(400).send({
           status: "error",
-          message: "At least one field is required",
+          message:
+            "At least one field is required",
         });
       }
 
@@ -190,59 +329,139 @@ export async function conversationsRoutes(app: FastifyInstance) {
         status?: ConversationStatus;
         updatedAt: Date;
       } = {
-        updatedAt: new Date(),
+        updatedAt:
+          new Date(),
       };
 
-      if (title !== undefined) {
-        if (!title.trim()) {
+      if (
+        title !== undefined
+      ) {
+        const normalizedTitle =
+          title.trim();
+
+        if (!normalizedTitle) {
           return reply.code(400).send({
             status: "error",
-            message: "title cannot be empty",
+            message:
+              "title cannot be empty",
           });
         }
 
-        updateData.title = title;
+        updateData.title =
+          normalizedTitle;
       }
 
-      if (status !== undefined) {
-        updateData.status = status;
+      if (
+        status !== undefined
+      ) {
+        updateData.status =
+          status;
       }
 
-      const result = await db
-        .update(conversations)
-        .set(updateData)
-        .where(eq(conversations.id, request.params.id))
-        .returning();
+      const result =
+        await db
+          .update(conversations)
+          .set(updateData)
+          .where(
+            eq(
+              conversations.id,
+              request.params.id,
+            ),
+          )
+          .returning();
 
-      return {
-        status: "ok",
-        data: result[0],
-      };
-    },
-  );
+      const updated =
+        result[0];
 
-  // DELETE /api/v1/conversations/:id
-  app.delete<{ Params: { id: string } }>(
-    "/:id",
-    async (request, reply) => {
-      const result = await db
-        .delete(conversations)
-        .where(eq(conversations.id, request.params.id))
-        .returning();
-
-      const conversation = result[0];
-
-      if (!conversation) {
+      if (!updated) {
         return reply.code(404).send({
           status: "error",
-          message: "Conversation not found",
+          message:
+            "Conversation not found",
         });
       }
 
       return {
         status: "ok",
-        message: "Conversation deleted successfully",
-        data: conversation,
+        data: updated,
+      };
+    },
+  );
+
+  // DELETE /api/v1/conversations/:id
+  app.delete<{
+    Params: {
+      id: string;
+    };
+  }>(
+    "/:id",
+    {
+      schema: {
+        params: UuidParamSchema,
+      },
+    },
+    async (request, reply) => {
+      const actor = request.auth!;
+
+      const access =
+        await getConversationAccess(
+          actor.userId,
+          request.params.id,
+        );
+
+      if (!access) {
+        return reply.code(404).send({
+          status: "error",
+          message:
+            "Conversation not found",
+        });
+      }
+
+      const allowed =
+        actor.role ===
+          "super_admin" ||
+        access.project.organization.role ===
+          "owner" ||
+        access.project.organization.role ===
+          "admin" ||
+        access.project.isProjectOwner ||
+        access.isConversationOwner;
+
+      if (!allowed) {
+        return reply.code(403).send({
+          status: "error",
+          message:
+            "Conversation deletion access denied",
+        });
+      }
+
+      const result =
+        await db
+          .delete(conversations)
+          .where(
+            eq(
+              conversations.id,
+              request.params.id,
+            ),
+          )
+          .returning();
+
+      const deleted =
+        result[0];
+
+      if (!deleted) {
+        return reply.code(404).send({
+          status: "error",
+          message:
+            "Conversation not found",
+        });
+      }
+
+      return {
+        status: "ok",
+        message:
+          "Conversation deleted successfully",
+        data: deleted,
       };
     },
   );

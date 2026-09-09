@@ -13,3 +13,4 @@ export * from "./automation.js";
 export * from "./builder.js";
 export * from "./business-document.js";
 export * from "./crm.js";
+export * from "./reel.js";

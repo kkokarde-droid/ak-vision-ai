@@ -95,3 +95,54 @@ export const id = uuid("id").defaultRandom().primaryKey();
 export const email = varchar("email", {
   length: 320,
 }).notNull();
+export const artifactTypeEnum = pgEnum("artifact_type", [
+  "document",
+  "spreadsheet",
+  "presentation",
+  "image",
+  "video",
+  "audio",
+  "code",
+  "website",
+  "webpage",
+  "mobile-app",
+  "desktop-app",
+  "pdf",
+  "data",
+  "other",
+]);
+
+export const artifactStatusEnum = pgEnum("artifact_status", [
+  "draft",
+  "processing",
+  "ready",
+  "failed",
+  "archived",
+]);
+export const generationTypeEnum = pgEnum("generation_type", [
+  "image",
+  "video",
+  "audio",
+  "speech",
+  "music",
+  "document",
+  "spreadsheet",
+  "presentation",
+]);
+
+export const generationStatusEnum = pgEnum("generation_status", [
+  "queued",
+  "processing",
+  "completed",
+  "failed",
+  "cancelled",
+]);
+
+export const generationPriorityEnum = pgEnum(
+  "generation_priority",
+  [
+    "low",
+    "normal",
+    "high",
+  ],
+);

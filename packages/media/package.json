@@ -1,0 +1,16 @@
+﻿{
+    "name":  "@ak-vision-ai/media",
+    "version":  "1.0.0",
+    "private":  true,
+    "type":  "module",
+    "main":  "./dist/index.js",
+    "types":  "./dist/index.d.ts",
+    "scripts":  {
+                    "build":  "tsc -p tsconfig.json",
+                    "typecheck":  "tsc -p tsconfig.json --noEmit",
+                    "test":  "node --import tsx --test src/**/*.test.ts"
+                },
+    "dependencies":  {
+                         "@ak-vision-ai/types":  "file:../types"
+                     }
+}

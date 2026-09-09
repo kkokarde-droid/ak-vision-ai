@@ -1,0 +1,2 @@
+ALTER TABLE "generation_jobs" ADD COLUMN "provider_request_id" varchar(255);--> statement-breakpoint
+CREATE UNIQUE INDEX "generation_jobs_provider_request_unique" ON "generation_jobs" USING btree ("provider_id","provider_request_id");

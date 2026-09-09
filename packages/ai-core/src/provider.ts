@@ -14,7 +14,11 @@ export interface AIProviderRequest {
 export interface AIProviderContext {
   requestId: string;
   userId: string;
-  organizationId: string;
+  organizationId?: string;
+  signal?: AbortSignal;
+  onSubmitted?: (
+    providerRequestId: string,
+  ) => Promise<void>;
 }
 
 export interface AIProvider {

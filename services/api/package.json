@@ -1,29 +1,37 @@
 {
-  "name": "@ak-vision-ai/api",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "main": "./dist/server.js",
-  "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/server.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "dependencies": {
-    "@ak-vision-ai/database": "file:../../packages/database",
-    "@fastify/cookie": "^11.1.2",
-    "@fastify/cors": "^11.3.0",
-    "@fastify/helmet": "^13.1.0",
-    "@fastify/jwt": "^10.2.2",
-    "@fastify/sensible": "^6.0.5",
-    "@sinclair/typebox": "^0.34.52",
-    "argon2": "^0.45.1",
-    "fastify": "^5.12.0"
-  },
-  "devDependencies": {
-    "@types/node": "^26.2.0",
-    "tsx": "^4.23.12",
-    "typescript": "^7.0.2"
-  }
+    "name": "@ak-vision-ai/api",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "main": "./dist/server.js",
+    "scripts": {
+        "dev": "node --env-file=../../.env --import tsx --watch src/server.ts",
+        "build": "tsc -p tsconfig.json",
+        "start": "node --env-file=../../.env dist/server.js",
+        "typecheck": "tsc -p tsconfig.json --noEmit",
+        "test": "node --env-file=../../.env --import tsx --test src/**/*.test.ts"
+    },
+    "dependencies": {
+        "@ak-vision-ai/credits": "file:../../packages/credits",
+        "@ak-vision-ai/database": "file:../../packages/database",
+        "@ak-vision-ai/generation": "file:../../packages/generation",
+        "@ak-vision-ai/pricing": "0.1.0",
+        "@ak-vision-ai/storage": "file:../../packages/storage",
+        "@fastify/cookie": "^11.1.2",
+        "@fastify/cors": "^11.3.0",
+        "@fastify/helmet": "^13.1.0",
+        "@fastify/jwt": "^10.2.2",
+        "@fastify/multipart": "^10.1.1",
+        "@fastify/sensible": "^6.0.5",
+        "@sinclair/typebox": "^0.34.52",
+        "argon2": "^0.45.1",
+        "fastify": "^5.12.0",
+        "google-auth-library": "^11.0.2",
+        "jose": "^6.2.10"
+    },
+    "devDependencies": {
+        "@types/node": "^26.2.0",
+        "tsx": "^4.23.12",
+        "typescript": "^7.0.2"
+    }
 }

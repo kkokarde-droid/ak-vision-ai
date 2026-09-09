@@ -1,11 +1,13 @@
-﻿import type { FastifyInstance } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { Type } from "@sinclair/typebox";
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq, inArray } from "drizzle-orm";
 
 import {
   db,
   messages,
   conversations,
+  projects,
+  organizationMemberships,
 } from "@ak-vision-ai/database";
 
 import {
@@ -16,6 +18,13 @@ import {
 import {
   UuidParamSchema,
 } from "../../common/schemas/common.schemas.js";
+
+import { authenticate } from "../../common/auth/auth.guard.js";
+
+import {
+  getConversationAccess,
+  canManageConversation,
+} from "../../common/auth/conversation-access.js";
 
 type MessageRole =
   | "user"
@@ -63,33 +72,38 @@ const MessagesListQuerySchema = Type.Object({
   ),
 });
 
-const ConversationMessagesQuerySchema = Type.Object({
-  limit: Type.Optional(
-    Type.Integer({
-      minimum: 1,
-      maximum: 100,
-      default: 20,
-    }),
-  ),
+const ConversationMessagesQuerySchema =
+  Type.Object({
+    limit: Type.Optional(
+      Type.Integer({
+        minimum: 1,
+        maximum: 100,
+        default: 20,
+      }),
+    ),
 
-  offset: Type.Optional(
-    Type.Integer({
-      minimum: 0,
-      default: 0,
-    }),
-  ),
-});
+    offset: Type.Optional(
+      Type.Integer({
+        minimum: 0,
+        default: 0,
+      }),
+    ),
+  });
 
-export async function messagesRoutes(app: FastifyInstance) {
+export async function messagesRoutes(
+  app: FastifyInstance,
+) {
+  app.addHook(
+    "preHandler",
+    authenticate,
+  );
+
   // =========================================================
   // GET /api/v1/messages
   //
-  // Examples:
-  // /messages
-  // /messages?limit=20
-  // /messages?limit=20&offset=20
-  // /messages?order=desc
-  // /messages?conversationId=<uuid>
+  // A global message listing is intentionally not exposed.
+  // Without conversationId, only messages belonging to
+  // conversations owned by the authenticated user are returned.
   // =========================================================
 
   app.get<{
@@ -103,7 +117,8 @@ export async function messagesRoutes(app: FastifyInstance) {
     "/",
     {
       schema: {
-        querystring: MessagesListQuerySchema,
+        querystring:
+          MessagesListQuerySchema,
       },
     },
     async (request, reply) => {
@@ -114,53 +129,101 @@ export async function messagesRoutes(app: FastifyInstance) {
         order = "asc",
       } = request.query;
 
-      // -------------------------------------------------------
-      // Verify conversation when conversationId is supplied
-      // -------------------------------------------------------
+      const actor =
+        request.auth!;
 
       if (conversationId) {
-        const conversationResult = await db
-          .select({
-            id: conversations.id,
-          })
-          .from(conversations)
-          .where(eq(conversations.id, conversationId))
-          .limit(1);
+        const access =
+          await getConversationAccess(
+            actor.userId,
+            conversationId,
+          );
 
-        if (!conversationResult[0]) {
+        if (!access) {
           return reply.code(404).send({
             status: "error",
-            message: "Conversation not found",
+            message:
+              "Conversation not found",
           });
         }
-      }
 
-      // -------------------------------------------------------
-      // Build query
-      // -------------------------------------------------------
-
-      const query = db
-        .select()
-        .from(messages);
-
-      const result = conversationId
-        ? await query
-            .where(eq(messages.conversationId, conversationId))
-            .orderBy(
-              order === "desc"
-                ? desc(messages.createdAt)
-                : asc(messages.createdAt),
+        const result =
+          await db
+            .select()
+            .from(messages)
+            .where(
+              eq(
+                messages.conversationId,
+                conversationId,
+              ),
             )
-            .limit(limit)
-            .offset(offset)
-        : await query
             .orderBy(
               order === "desc"
-                ? desc(messages.createdAt)
-                : asc(messages.createdAt),
+                ? desc(
+                    messages.createdAt,
+                  )
+                : asc(
+                    messages.createdAt,
+                  ),
             )
             .limit(limit)
             .offset(offset);
+
+        return {
+          status: "ok",
+          data: result,
+          meta: {
+            limit,
+            offset,
+            order,
+            conversationId,
+            count: result.length,
+          },
+        };
+      }
+
+      const result =
+        await db
+          .select({
+            id: messages.id,
+            conversationId:
+              messages.conversationId,
+            role:
+              messages.role,
+            contentType:
+              messages.contentType,
+            content:
+              messages.content,
+            createdAt:
+              messages.createdAt,
+            updatedAt:
+              messages.updatedAt,
+          })
+          .from(messages)
+          .innerJoin(
+            conversations,
+            eq(
+              conversations.id,
+              messages.conversationId,
+            ),
+          )
+          .where(
+            eq(
+              conversations.userId,
+              actor.userId,
+            ),
+          )
+          .orderBy(
+            order === "desc"
+              ? desc(
+                  messages.createdAt,
+                )
+              : asc(
+                  messages.createdAt,
+                ),
+          )
+          .limit(limit)
+          .offset(offset);
 
       return {
         status: "ok",
@@ -169,7 +232,7 @@ export async function messagesRoutes(app: FastifyInstance) {
           limit,
           offset,
           order,
-          conversationId: conversationId ?? null,
+          conversationId: null,
           count: result.length,
         },
       };
@@ -192,20 +255,39 @@ export async function messagesRoutes(app: FastifyInstance) {
       },
     },
     async (request, reply) => {
-      const { id } = request.params;
-
-      const result = await db
-        .select()
-        .from(messages)
-        .where(eq(messages.id, id))
-        .limit(1);
+      const result =
+        await db
+          .select()
+          .from(messages)
+          .where(
+            eq(
+              messages.id,
+              request.params.id,
+            ),
+          )
+          .limit(1);
 
       const message = result[0];
 
       if (!message) {
         return reply.code(404).send({
           status: "error",
-          message: "Message not found",
+          message:
+            "Message not found",
+        });
+      }
+
+      const access =
+        await getConversationAccess(
+          request.auth!.userId,
+          message.conversationId,
+        );
+
+      if (!access) {
+        return reply.code(404).send({
+          status: "error",
+          message:
+            "Message not found",
         });
       }
 
@@ -218,8 +300,6 @@ export async function messagesRoutes(app: FastifyInstance) {
 
   // =========================================================
   // GET /api/v1/messages/conversation/:conversationId
-  //
-  // Conversation history shortcut
   // =========================================================
 
   app.get<{
@@ -235,11 +315,13 @@ export async function messagesRoutes(app: FastifyInstance) {
     {
       schema: {
         params: Type.Object({
-          conversationId: Type.String({
-            format: "uuid",
-          }),
+          conversationId:
+            Type.String({
+              format: "uuid",
+            }),
         }),
-        querystring: ConversationMessagesQuerySchema,
+        querystring:
+          ConversationMessagesQuerySchema,
       },
     },
     async (request, reply) => {
@@ -252,41 +334,35 @@ export async function messagesRoutes(app: FastifyInstance) {
         offset = 0,
       } = request.query;
 
-      // -------------------------------------------------------
-      // Verify conversation
-      // -------------------------------------------------------
+      const access =
+        await getConversationAccess(
+          request.auth!.userId,
+          conversationId,
+        );
 
-      const conversationResult = await db
-        .select({
-          id: conversations.id,
-        })
-        .from(conversations)
-        .where(eq(conversations.id, conversationId))
-        .limit(1);
-
-      if (!conversationResult[0]) {
+      if (!access) {
         return reply.code(404).send({
           status: "error",
-          message: "Conversation not found",
+          message:
+            "Conversation not found",
         });
       }
 
-      // -------------------------------------------------------
-      // Fetch messages
-      // -------------------------------------------------------
-
-      const result = await db
-        .select()
-        .from(messages)
-        .where(
-          eq(
-            messages.conversationId,
-            conversationId,
-          ),
-        )
-        .orderBy(asc(messages.createdAt))
-        .limit(limit)
-        .offset(offset);
+      const result =
+        await db
+          .select()
+          .from(messages)
+          .where(
+            eq(
+              messages.conversationId,
+              conversationId,
+            ),
+          )
+          .orderBy(
+            asc(messages.createdAt),
+          )
+          .limit(limit)
+          .offset(offset);
 
       return {
         status: "ok",
@@ -316,7 +392,8 @@ export async function messagesRoutes(app: FastifyInstance) {
     "/",
     {
       schema: {
-        body: CreateMessageBodySchema,
+        body:
+          CreateMessageBodySchema,
       },
     },
     async (request, reply) => {
@@ -327,42 +404,71 @@ export async function messagesRoutes(app: FastifyInstance) {
         content,
       } = request.body;
 
-      // -------------------------------------------------------
-      // Verify conversation
-      // -------------------------------------------------------
+      const access =
+        await getConversationAccess(
+          request.auth!.userId,
+          conversationId,
+        );
 
-      const conversationResult = await db
-        .select({
-          id: conversations.id,
-        })
-        .from(conversations)
-        .where(eq(conversations.id, conversationId))
-        .limit(1);
-
-      if (!conversationResult[0]) {
+      if (!access) {
         return reply.code(404).send({
           status: "error",
-          message: "Conversation not found",
+          message:
+            "Conversation not found",
         });
       }
 
-      // -------------------------------------------------------
-      // Insert message
-      // -------------------------------------------------------
+      const normalizedContent =
+        content.trim();
 
-      const result = await db
-        .insert(messages)
-        .values({
-          conversationId,
-          role,
-          contentType,
-          content: content.trim(),
-        })
-        .returning();
+      if (!normalizedContent) {
+        return reply.code(400).send({
+          status: "error",
+          message:
+            "content cannot be empty",
+        });
+      }
+
+      // Customer-originated requests may only create user
+      // messages. System/tool/assistant messages should be
+      // generated by trusted backend workflows.
+      if (
+        role !== "user" &&
+        request.auth!.role ===
+          "customer"
+      ) {
+        return reply.code(403).send({
+          status: "error",
+          message:
+            "Customer clients cannot create non-user messages",
+        });
+      }
+
+      const result =
+        await db
+          .insert(messages)
+          .values({
+            conversationId,
+            role,
+            contentType,
+            content:
+              normalizedContent,
+          })
+          .returning();
+
+      const message = result[0];
+
+      if (!message) {
+        return reply.code(500).send({
+          status: "error",
+          message:
+            "Failed to create message",
+        });
+      }
 
       return reply.code(201).send({
         status: "ok",
-        data: result[0],
+        data: message,
       });
     },
   );
@@ -385,34 +491,62 @@ export async function messagesRoutes(app: FastifyInstance) {
     {
       schema: {
         params: UuidParamSchema,
-        body: UpdateMessageBodySchema,
+        body:
+          UpdateMessageBodySchema,
       },
     },
     async (request, reply) => {
-      const { id } = request.params;
+      const { id } =
+        request.params;
 
-      // -------------------------------------------------------
-      // Find existing message
-      // -------------------------------------------------------
+      const existingResult =
+        await db
+          .select()
+          .from(messages)
+          .where(
+            eq(
+              messages.id,
+              id,
+            ),
+          )
+          .limit(1);
 
-      const existingResult = await db
-        .select()
-        .from(messages)
-        .where(eq(messages.id, id))
-        .limit(1);
-
-      const existingMessage = existingResult[0];
+      const existingMessage =
+        existingResult[0];
 
       if (!existingMessage) {
         return reply.code(404).send({
           status: "error",
-          message: "Message not found",
+          message:
+            "Message not found",
         });
       }
 
-      // -------------------------------------------------------
-      // Prepare update
-      // -------------------------------------------------------
+      const access =
+        await getConversationAccess(
+          request.auth!.userId,
+          existingMessage.conversationId,
+        );
+
+      if (!access) {
+        return reply.code(404).send({
+          status: "error",
+          message:
+            "Message not found",
+        });
+      }
+
+      if (
+        !canManageConversation(
+          access,
+        )
+      ) {
+        return reply.code(403).send({
+          status: "error",
+          message:
+            "Message management access denied",
+        });
+      }
 
       const updateData: {
         role?: MessageRole;
@@ -420,36 +554,71 @@ export async function messagesRoutes(app: FastifyInstance) {
         content?: string;
         updatedAt: Date;
       } = {
-        updatedAt: new Date(),
+        updatedAt:
+          new Date(),
       };
 
-      if (request.body.role !== undefined) {
-        updateData.role = request.body.role;
+      if (
+        request.body.role !==
+        undefined
+      ) {
+        updateData.role =
+          request.body.role;
       }
 
-      if (request.body.contentType !== undefined) {
+      if (
+        request.body.contentType !==
+        undefined
+      ) {
         updateData.contentType =
           request.body.contentType;
       }
 
-      if (request.body.content !== undefined) {
-        updateData.content =
+      if (
+        request.body.content !==
+        undefined
+      ) {
+        const content =
           request.body.content.trim();
+
+        if (!content) {
+          return reply.code(400).send({
+            status: "error",
+            message:
+              "content cannot be empty",
+          });
+        }
+
+        updateData.content =
+          content;
       }
 
-      // -------------------------------------------------------
-      // Update
-      // -------------------------------------------------------
+      const result =
+        await db
+          .update(messages)
+          .set(updateData)
+          .where(
+            eq(
+              messages.id,
+              id,
+            ),
+          )
+          .returning();
 
-      const result = await db
-        .update(messages)
-        .set(updateData)
-        .where(eq(messages.id, id))
-        .returning();
+      const updated =
+        result[0];
+
+      if (!updated) {
+        return reply.code(404).send({
+          status: "error",
+          message:
+            "Message not found",
+        });
+      }
 
       return {
         status: "ok",
-        data: result[0],
+        data: updated,
       };
     },
   );
@@ -466,30 +635,96 @@ export async function messagesRoutes(app: FastifyInstance) {
     "/:id",
     {
       schema: {
-        params: UuidParamSchema,
+        params:
+          UuidParamSchema,
       },
     },
     async (request, reply) => {
-      const { id } = request.params;
+      const { id } =
+        request.params;
 
-      const result = await db
-        .delete(messages)
-        .where(eq(messages.id, id))
-        .returning();
+      const existingResult =
+        await db
+          .select()
+          .from(messages)
+          .where(
+            eq(
+              messages.id,
+              id,
+            ),
+          )
+          .limit(1);
 
-      const message = result[0];
+      const existingMessage =
+        existingResult[0];
 
-      if (!message) {
+      if (!existingMessage) {
         return reply.code(404).send({
           status: "error",
-          message: "Message not found",
+          message:
+            "Message not found",
+        });
+      }
+
+      const access =
+        await getConversationAccess(
+          request.auth!.userId,
+          existingMessage.conversationId,
+        );
+
+      if (!access) {
+        return reply.code(404).send({
+          status: "error",
+          message:
+            "Message not found",
+        });
+      }
+
+      const allowed =
+        request.auth!.role ===
+          "super_admin" ||
+        access.project.organization.role ===
+          "owner" ||
+        access.project.organization.role ===
+          "admin" ||
+        access.project.isProjectOwner ||
+        access.isConversationOwner;
+
+      if (!allowed) {
+        return reply.code(403).send({
+          status: "error",
+          message:
+            "Message deletion access denied",
+        });
+      }
+
+      const result =
+        await db
+          .delete(messages)
+          .where(
+            eq(
+              messages.id,
+              id,
+            ),
+          )
+          .returning();
+
+      const deleted =
+        result[0];
+
+      if (!deleted) {
+        return reply.code(404).send({
+          status: "error",
+          message:
+            "Message not found",
         });
       }
 
       return {
         status: "ok",
-        message: "Message deleted successfully",
-        data: message,
+        message:
+          "Message deleted successfully",
+        data: deleted,
       };
     },
   );

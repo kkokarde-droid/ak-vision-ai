@@ -1,54 +1,120 @@
-import type { ID, ISODateString, CurrencyCode } from "./common.js";
+﻿import type {
+  CurrencyCode,
+  ID,
+  ISODateString,
+} from "./common.js";
 
-export type CreditTransactionType =
+/**
+ * A credit account belongs to exactly one owner:
+ * either an individual user or an organization.
+ */
+export type CreditAccountOwner =
+  | {
+      userId: ID;
+      organizationId: null;
+    }
+  | {
+      userId: null;
+      organizationId: ID;
+    };
+
+/**
+ * Immutable accounting events.
+ */
+export type CreditLedgerEventType =
   | "grant"
-  | "purchase"
-  | "usage"
+  | "hold"
+  | "consume"
+  | "release"
   | "refund"
   | "adjustment"
   | "expiration";
 
+/**
+ * Business source/origin of the credit event.
+ */
 export type CreditSource =
   | "free"
-  | "subscription"
   | "purchase"
+  | "subscription"
   | "promotion"
-  | "admin";
+  | "refund"
+  | "admin"
+  | "system";
 
-export interface CreditBalance {
-  id: ID;
-  userId: ID;
-  organizationId?: ID;
-  availableCredits: number;
-  reservedCredits: number;
-  currency: CurrencyCode;
-  updatedAt: ISODateString;
-}
+/**
+ * Current state of a credit account.
+ */
+export type CreditBalance =
+  CreditAccountOwner & {
+    id: ID;
+    availableCredits: number;
+    reservedCredits: number;
+    currency: CurrencyCode;
+    createdAt: ISODateString;
+    updatedAt: ISODateString;
+  };
 
-export interface CreditTransaction {
-  id: ID;
-  userId: ID;
-  organizationId?: ID;
-  type: CreditTransactionType;
-  source: CreditSource;
-  amount: number;
-  balanceAfter: number;
-  referenceId?: ID;
-  description?: string;
-  createdAt: ISODateString;
-}
+/**
+ * Current state of a credit reservation.
+ */
+export type CreditReservationStatus =
+  | "reserved"
+  | "consumed"
+  | "released"
+  | "expired";
 
-export interface UsageRecord {
-  id: ID;
-  userId: ID;
-  organizationId?: ID;
-  requestId: ID;
-  providerId?: ID;
-  providerModelId?: ID;
-  creditsUsed: number;
-  providerCostMinor?: number;
-  customerChargeMinor?: number;
-  platformMarginMinor?: number;
-  currency: CurrencyCode;
-  createdAt: ISODateString;
-}
+export type CreditReservation =
+  CreditAccountOwner & {
+    id: ID;
+    creditBalanceId: ID;
+    amount: number;
+    status: CreditReservationStatus;
+    referenceId?: string;
+    idempotencyKey: string;
+    expiresAt?: ISODateString;
+    releasedAt?: ISODateString;
+    consumedAt?: ISODateString;
+    createdAt: ISODateString;
+    updatedAt: ISODateString;
+  };
+
+/**
+ * Immutable credit ledger entry.
+ */
+export type CreditTransaction =
+  CreditAccountOwner & {
+    id: ID;
+    creditBalanceId: ID;
+    type: CreditLedgerEventType;
+    source: CreditSource;
+    amount: number;
+    availableBalanceAfter: number;
+    reservedBalanceAfter: number;
+    referenceId?: string;
+    reservationId?: ID;
+    idempotencyKey?: string;
+    description?: string;
+    createdAt: ISODateString;
+  };
+
+/**
+ * Internal/admin usage representation.
+ *
+ * Cost fields are server-generated.
+ */
+export type UsageRecord =
+  CreditAccountOwner & {
+    id: ID;
+    requestId: ID;
+    providerId?: string;
+    providerModelId?: string;
+    creditsUsed: number;
+    providerCostMinor?: number;
+    infrastructureCostMinor?: number;
+    retryCostMinor?: number;
+    customerChargeMinor?: number;
+    platformContributionMinor?: number;
+    currency: CurrencyCode;
+    createdAt: ISODateString;
+  };

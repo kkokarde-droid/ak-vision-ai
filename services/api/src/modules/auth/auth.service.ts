@@ -7,6 +7,10 @@ import {
 } from "@ak-vision-ai/database";
 
 import {
+  getOrCreateCreditBalanceTx,
+} from "@ak-vision-ai/credits";
+
+import {
   hashPassword,
   verifyPassword,
 } from "../../common/auth/password.service.js";
@@ -99,6 +103,18 @@ export async function registerUser(input: {
           userId: createdUser.id,
           passwordHash,
         });
+      /*
+       * Provision the customer's individual credit account
+       * inside the SAME transaction as user creation and
+       * password credential creation.
+       */
+      await getOrCreateCreditBalanceTx(
+        tx,
+        {
+          userId:
+            createdUser.id,
+        },
+      );
 
       return createdUser;
     },

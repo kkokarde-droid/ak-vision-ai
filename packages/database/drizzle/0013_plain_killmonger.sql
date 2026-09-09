@@ -1,0 +1,3 @@
+ALTER TABLE "generation_outputs" ADD COLUMN "artifact_id" uuid;--> statement-breakpoint
+ALTER TABLE "generation_outputs" ADD CONSTRAINT "generation_outputs_artifact_id_artifacts_id_fk" FOREIGN KEY ("artifact_id") REFERENCES "public"."artifacts"("id") ON DELETE restrict ON UPDATE cascade;--> statement-breakpoint
+CREATE INDEX "generation_outputs_artifact_idx" ON "generation_outputs" USING btree ("artifact_id");

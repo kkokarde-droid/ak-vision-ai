@@ -7,10 +7,32 @@ import {
 } from "@ak-vision-ai/database";
 
 import { hashPassword } from "./common/auth/password.service.js";
+const isProduction =
+  process.env.NODE_ENV === "production";
 
-const ADMIN_EMAIL = "admin-test@akvision.local";
-const NEW_PASSWORD = "AKVisionAdmin123!";
+if (isProduction) {
+  throw new Error(
+    "Admin password reset utility is disabled in production.",
+  );
+}
 
+const ADMIN_EMAIL =
+  process.env.ADMIN_RESET_EMAIL?.trim().toLowerCase() ?? "";
+
+const NEW_PASSWORD =
+  process.env.ADMIN_RESET_PASSWORD ?? "";
+
+if (!ADMIN_EMAIL) {
+  throw new Error(
+    "ADMIN_RESET_EMAIL is required.",
+  );
+}
+
+if (!NEW_PASSWORD) {
+  throw new Error(
+    "ADMIN_RESET_PASSWORD is required.",
+  );
+}
 async function main() {
   const normalizedEmail = ADMIN_EMAIL.trim().toLowerCase();
 
@@ -83,7 +105,7 @@ async function main() {
   console.log("ADMIN PASSWORD RESET SUCCESSFUL");
   console.log("========================================");
   console.log(`Email:    ${normalizedEmail}`);
-  console.log(`Password: ${NEW_PASSWORD}`);
+  console.log("Password reset completed using the supplied environment credential.");
   console.log(`Role:     ${user.role}`);
   console.log(`Status:   ${user.status}`);
   console.log("========================================");

@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 .pnpm-store/
 
@@ -46,3 +46,12 @@ Thumbs.db
 *.key
 *.p12
 *.pfx
+# Developer backups / temporary snapshots
+*.bak
+*.before-*
+*.step*
+p2f*-backup-*/
+# Local worker runtime media
+services/worker/worker-storage/
+services/worker/worker-media/
+*.backup

@@ -12,6 +12,12 @@ import {
   requireRole,
 } from "../../common/auth/auth.guard.js";
 
+import {
+  CreateUserBodySchema,
+  UpdateUserBodySchema,
+  UserIdParamSchema,
+} from "../../common/schemas/users.schemas.js";
+
 const USER_ROLES = [
   "customer",
   "admin",
@@ -121,6 +127,11 @@ export async function usersRoutes(
     };
   }>(
     "/:id",
+    {
+      schema: {
+        params: UserIdParamSchema,
+      },
+    },
     async (request, reply) => {
       const result = await db
         .select()
@@ -160,6 +171,11 @@ export async function usersRoutes(
     };
   }>(
     "/",
+    {
+      schema: {
+        body: CreateUserBodySchema,
+      },
+    },
     async (request, reply) => {
       const {
         email,
@@ -316,6 +332,12 @@ export async function usersRoutes(
     };
   }>(
     "/:id",
+    {
+      schema: {
+        params: UserIdParamSchema,
+        body: UpdateUserBodySchema,
+      },
+    },
     async (request, reply) => {
       const { id } = request.params;
 
@@ -572,6 +594,11 @@ export async function usersRoutes(
     };
   }>(
     "/:id",
+    {
+      schema: {
+        params: UserIdParamSchema,
+      },
+    },
     async (request, reply) => {
       const actor = request.auth;
 

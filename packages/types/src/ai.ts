@@ -1,4 +1,4 @@
-﻿import type { ID, ISODateString } from "./common.js";
+import type { ID, ISODateString } from "./common.js";
 
 export type AITaskType =
   | "chat"
@@ -24,7 +24,7 @@ export type AIRequestMode =
 export interface AIRequest {
   id: ID;
   userId: ID;
-  organizationId: ID;
+  organizationId?: ID;
   projectId?: ID;
   conversationId?: ID;
   taskType: AITaskType;
