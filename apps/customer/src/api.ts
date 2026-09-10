@@ -26,9 +26,7 @@ export type GenerationJob = {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  error: {
-    message: string;
-  } | null;
+  error: { message: string } | null;
 };
 
 export type GenerationOutput = {
@@ -43,9 +41,7 @@ export type GenerationOutput = {
 export type CreateGenerationResponse = {
   status: "ok";
   data: {
-    job: {
-      id: string;
-    };
+    job: { id: string };
     replayed: boolean;
     pricing: {
       pricingVersion: string;
@@ -85,12 +81,8 @@ type ErrorResponse = {
 
 const API_BASE = "/api/v1";
 
-async function request<T>(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<T> {
+async function request<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
   let response: Response;
-
   try {
     response = await fetch(input, {
       ...init,
@@ -110,7 +102,6 @@ async function request<T>(
 
   const rawBody = await response.text();
   let payload: T | ErrorResponse | null = null;
-
   if (rawBody.trim()) {
     try {
       payload = JSON.parse(rawBody) as T | ErrorResponse;
@@ -127,7 +118,6 @@ async function request<T>(
       typeof payload.message === "string"
         ? payload.message
         : `Request failed with HTTP ${response.status}`;
-
     throw new Error(message);
   }
 
@@ -137,65 +127,33 @@ async function request<T>(
 export async function getCurrentUser() {
   const response = await fetch(`${API_BASE}/auth/me`, {
     credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
   });
-
-  if (response.status === 401) {
-    return null;
-  }
-
-  const payload = (await response.json()) as {
-    status: "ok";
-    data: AuthUser;
-  };
-
-  if (!response.ok) {
-    throw new Error("Could not restore your session.");
-  }
-
+  if (response.status === 401) return null;
+  const payload = (await response.json()) as { status: "ok"; data: AuthUser };
+  if (!response.ok) throw new Error("Could not restore your session.");
   return payload.data;
 }
 
 export async function login(email: string, password: string) {
-  return request<{
-    status: "ok";
-    data: {
-      user: AuthUser;
-    };
-  }>(`${API_BASE}/auth/login`, {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
+  return request<{ status: "ok"; data: { user: AuthUser } }>(
+    `${API_BASE}/auth/login`,
+    { method: "POST", body: JSON.stringify({ email, password }) },
+  );
 }
 
-export async function register(
-  displayName: string,
-  email: string,
-  password: string,
-) {
-  return request<{
-    status: "ok";
-    data: {
-      user: AuthUser;
-    };
-  }>(`${API_BASE}/auth/register`, {
-    method: "POST",
-    body: JSON.stringify({
-      displayName,
-      email,
-      password,
-      accountType: "individual",
-    }),
-  });
+export async function register(displayName: string, email: string, password: string) {
+  return request<{ status: "ok"; data: { user: AuthUser } }>(
+    `${API_BASE}/auth/register`,
+    {
+      method: "POST",
+      body: JSON.stringify({ displayName, email, password, accountType: "individual" }),
+    },
+  );
 }
 
 export async function logout() {
-  return request<{
-    status: "ok";
-    message: string;
-  }>(`${API_BASE}/auth/logout`, {
+  return request<{ status: "ok"; message: string }>(`${API_BASE}/auth/logout`, {
     method: "POST",
     body: JSON.stringify({}),
   });
@@ -218,9 +176,7 @@ export type UploadImageResponse = {
 export async function uploadImage(file: File) {
   const formData = new FormData();
   formData.append("file", file);
-
   let response: Response;
-
   try {
     response = await fetch(`${API_BASE}/media/upload`, {
       method: "POST",
@@ -237,7 +193,6 @@ export async function uploadImage(file: File) {
 
   const rawBody = await response.text();
   let payload: UploadImageResponse | ErrorResponse | null = null;
-
   if (rawBody.trim()) {
     try {
       payload = JSON.parse(rawBody) as UploadImageResponse | ErrorResponse;
@@ -254,16 +209,14 @@ export async function uploadImage(file: File) {
       typeof payload.message === "string"
         ? payload.message
         : `Image upload failed with HTTP ${response.status}`;
-
     throw new Error(message);
   }
-
   return payload as UploadImageResponse;
 }
 
 export async function createGeneration(input: {
   requestId: string;
-  mode: GenerationMode;
+  mode?: GenerationMode;
   providerModelId?: "dop-lite" | "dop-turbo" | "dop-standard";
   prompt: string;
   imageAssetId?: string;
@@ -273,55 +226,41 @@ export async function createGeneration(input: {
   seed?: number;
   organizationId?: string;
 }) {
+  const mode = input.mode ??
+    (input.imageAssetId ? "image_to_video" : "text_to_video");
+
   return request<CreateGenerationResponse>(`${API_BASE}/generation`, {
     method: "POST",
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, mode }),
   });
 }
 
-export async function getGeneration(
-  jobId: string,
-  organizationId?: string,
-) {
+export async function getGeneration(jobId: string, organizationId?: string) {
   const query = organizationId
     ? `?organizationId=${encodeURIComponent(organizationId)}`
     : "";
-
-  return request<GenerationResponse>(
-    `${API_BASE}/generation/${jobId}${query}`,
-  );
+  return request<GenerationResponse>(`${API_BASE}/generation/${jobId}${query}`);
 }
 
-export async function getGenerationOutputs(
-  jobId: string,
-  organizationId?: string,
-) {
+export async function getGenerationOutputs(jobId: string, organizationId?: string) {
   const query = organizationId
     ? `?organizationId=${encodeURIComponent(organizationId)}`
     : "";
-
   return request<GenerationOutputsResponse>(
     `${API_BASE}/generation/${jobId}/output${query}`,
   );
 }
 
 export async function cancelGeneration(jobId: string) {
-  return request<{
-    status: "ok";
-    data: unknown;
-  }>(`${API_BASE}/generation/${jobId}/cancel`, {
-    method: "POST",
-    body: JSON.stringify({}),
-  });
+  return request<{ status: "ok"; data: unknown }>(
+    `${API_BASE}/generation/${jobId}/cancel`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
 }
 
 export async function getCredits() {
   return request<{
     status: "ok";
-    data: {
-      availableCredits: number;
-      reservedCredits: number;
-      currency: string;
-    };
+    data: { availableCredits: number; reservedCredits: number; currency: string };
   }>(`${API_BASE}/credits`);
 }
