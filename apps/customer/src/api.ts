@@ -5,6 +5,12 @@
   | "failed"
   | "cancelled";
 
+export type GenerationMode =
+  | "text_to_video"
+  | "image_to_video"
+  | "video_to_video"
+  | "ai_director";
+
 export type GenerationJob = {
   id: string;
   requestId: string;
@@ -70,6 +76,7 @@ export type AuthUser = {
   createdAt: string;
   updatedAt: string;
 };
+
 type ErrorResponse = {
   status: "error";
   code?: string;
@@ -85,17 +92,14 @@ async function request<T>(
   let response: Response;
 
   try {
-    response = await fetch(
-      input,
-      {
-        ...init,
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(init?.headers ?? {}),
-        },
+    response = await fetch(input, {
+      ...init,
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
       },
-    );
+    });
   } catch (error) {
     throw new Error(
       error instanceof Error
@@ -104,20 +108,12 @@ async function request<T>(
     );
   }
 
-  const rawBody =
-    await response.text();
-
-  let payload:
-    | T
-    | ErrorResponse
-    | null = null;
+  const rawBody = await response.text();
+  let payload: T | ErrorResponse | null = null;
 
   if (rawBody.trim()) {
     try {
-      payload =
-        JSON.parse(rawBody) as
-          | T
-          | ErrorResponse;
+      payload = JSON.parse(rawBody) as T | ErrorResponse;
     } catch {
       payload = null;
     }
@@ -139,54 +135,39 @@ async function request<T>(
 }
 
 export async function getCurrentUser() {
-  const response = await fetch(
-    `${API_BASE}/auth/me`,
-    {
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-      },
+  const response = await fetch(`${API_BASE}/auth/me`, {
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
     },
-  );
+  });
 
   if (response.status === 401) {
     return null;
   }
 
-  const payload =
-    (await response.json()) as {
-      status: "ok";
-      data: AuthUser;
-    };
+  const payload = (await response.json()) as {
+    status: "ok";
+    data: AuthUser;
+  };
 
   if (!response.ok) {
-    throw new Error(
-      "Could not restore your session.",
-    );
+    throw new Error("Could not restore your session.");
   }
 
   return payload.data;
 }
 
-export async function login(
-  email: string,
-  password: string,
-) {
+export async function login(email: string, password: string) {
   return request<{
     status: "ok";
     data: {
       user: AuthUser;
     };
-  }>(
-    `${API_BASE}/auth/login`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        email,
-        password,
-      }),
-    },
-  );
+  }>(`${API_BASE}/auth/login`, {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
 }
 
 export async function register(
@@ -199,32 +180,27 @@ export async function register(
     data: {
       user: AuthUser;
     };
-  }>(
-    `${API_BASE}/auth/register`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        displayName,
-        email,
-        password,
-        accountType: "individual",
-      }),
-    },
-  );
+  }>(`${API_BASE}/auth/register`, {
+    method: "POST",
+    body: JSON.stringify({
+      displayName,
+      email,
+      password,
+      accountType: "individual",
+    }),
+  });
 }
 
 export async function logout() {
   return request<{
     status: "ok";
     message: string;
-  }>(
-    `${API_BASE}/auth/logout`,
-    {
-      method: "POST",
-      body: JSON.stringify({}),
-    },
-  );
+  }>(`${API_BASE}/auth/logout`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
 }
+
 export type UploadImageResponse = {
   status: "ok";
   data: {
@@ -239,24 +215,18 @@ export type UploadImageResponse = {
   };
 };
 
-export async function uploadImage(
-  file: File,
-) {
+export async function uploadImage(file: File) {
   const formData = new FormData();
-
   formData.append("file", file);
 
   let response: Response;
 
   try {
-    response = await fetch(
-      `${API_BASE}/media/upload`,
-      {
-        method: "POST",
-        credentials: "include",
-        body: formData,
-      },
-    );
+    response = await fetch(`${API_BASE}/media/upload`, {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    });
   } catch (error) {
     throw new Error(
       error instanceof Error
@@ -266,17 +236,11 @@ export async function uploadImage(
   }
 
   const rawBody = await response.text();
-
-  let payload:
-    | UploadImageResponse
-    | ErrorResponse
-    | null = null;
+  let payload: UploadImageResponse | ErrorResponse | null = null;
 
   if (rawBody.trim()) {
     try {
-      payload = JSON.parse(rawBody) as
-        | UploadImageResponse
-        | ErrorResponse;
+      payload = JSON.parse(rawBody) as UploadImageResponse | ErrorResponse;
     } catch {
       payload = null;
     }
@@ -296,27 +260,23 @@ export async function uploadImage(
 
   return payload as UploadImageResponse;
 }
+
 export async function createGeneration(input: {
   requestId: string;
-  providerModelId:
-    | "dop-lite"
-    | "dop-turbo"
-    | "dop-standard";
+  mode: GenerationMode;
+  providerModelId?: "dop-lite" | "dop-turbo" | "dop-standard";
   prompt: string;
-  imageAssetId: string;
+  imageAssetId?: string;
   durationSeconds: 3 | 5;
   priority?: "low" | "normal" | "high";
   enhancePrompt?: boolean;
   seed?: number;
   organizationId?: string;
 }) {
-  return request<CreateGenerationResponse>(
-    `${API_BASE}/generation`,
-    {
-      method: "POST",
-      body: JSON.stringify(input),
-    },
-  );
+  return request<CreateGenerationResponse>(`${API_BASE}/generation`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function getGeneration(
@@ -324,9 +284,7 @@ export async function getGeneration(
   organizationId?: string,
 ) {
   const query = organizationId
-    ? `?organizationId=${encodeURIComponent(
-        organizationId,
-      )}`
+    ? `?organizationId=${encodeURIComponent(organizationId)}`
     : "";
 
   return request<GenerationResponse>(
@@ -339,9 +297,7 @@ export async function getGenerationOutputs(
   organizationId?: string,
 ) {
   const query = organizationId
-    ? `?organizationId=${encodeURIComponent(
-        organizationId,
-      )}`
+    ? `?organizationId=${encodeURIComponent(organizationId)}`
     : "";
 
   return request<GenerationOutputsResponse>(
@@ -349,19 +305,14 @@ export async function getGenerationOutputs(
   );
 }
 
-export async function cancelGeneration(
-  jobId: string,
-) {
+export async function cancelGeneration(jobId: string) {
   return request<{
     status: "ok";
     data: unknown;
-  }>(
-    `${API_BASE}/generation/${jobId}/cancel`,
-    {
-      method: "POST",
-      body: JSON.stringify({}),
-    },
-  );
+  }>(`${API_BASE}/generation/${jobId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
 }
 
 export async function getCredits() {
@@ -372,9 +323,5 @@ export async function getCredits() {
       reservedCredits: number;
       currency: string;
     };
-  }>(
-    `${API_BASE}/credits`,
-  );
+  }>(`${API_BASE}/credits`);
 }
-
-
