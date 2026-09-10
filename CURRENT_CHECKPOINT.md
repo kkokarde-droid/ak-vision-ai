@@ -1,33 +1,28 @@
 # Current Checkpoint
 
-Date: 2026-09-09
+Date: 2026-09-10
 
-## Current milestone
+## V1 status
 
-V1 backend integrity gate is green after restoring authoritative pricing selection and hardening worker claim compare-and-swap behavior.
+Backend integrity remains GREEN. API 106/106, Providers 17/17, Worker 14/14 remain the authoritative regression evidence from the preceding checkpoint.
 
-## Completed in this checkpoint
+## Customer Generation Composer
 
-- Fixed generation model resolution so a validated supplied image-to-video model is passed unchanged to authoritative pricing lookup; the mode default is used only when no model is supplied.
-- Verified an unpriced valid model returns HTTP 404 before reservation, job creation, or ledger mutation.
-- Hardened `claimNextGenerationJob` with an eligibility predicate on the transition update, preventing duplicate worker claims even if candidate selection races.
+Implemented on branch `feat/customer-generation-modes`:
 
-## Verification
+- Customer API client now supports an explicit `GenerationMode` contract.
+- Customer composer exposes first-class Text to Video, Image to Video, and AI Director modes.
+- Text to Video submits prompt-only requests and leaves provider routing to the server.
+- Image to Video uses authenticated uploaded `imageAssetId`; no raw image URL is requested from the customer.
+- AI Director is visible as `Coming soon` and cannot submit a generation request.
+- Provider/model names and provider-specific controls are hidden from the customer UI.
+- Prompt field explicitly accepts Hindi, Marathi, Chinese, English, and other Unicode scripts.
+- Customer-facing controls are limited to duration and prompt enhancement.
 
-- API tests: 106 passed, 0 failed.
-- Providers tests: 17 passed, 0 failed.
-- Worker tests: 14 passed, 0 failed.
-- API, providers, types, and worker typechecks: passed.
-- Workspace build: passed.
+## Verification state
 
-## Remaining V1 work
-
-Customer generation UX completion, image upload flow validation, AI Director completion, multilingual acceptance coverage, admin operations, production hardening, and fresh real-customer E2E remain to be gated.
+Code diff is isolated to `apps/customer/src/App.tsx`, `apps/customer/src/api.ts`, and customer contract/checkpoint documentation. Local typecheck/build could not be executed in the current execution environment because outbound DNS access to GitHub is unavailable. No claim of passing customer typecheck/build is made until the repository can run its normal commands.
 
 ## Next gate
 
-Audit the existing customer UI and generation API contract for the remaining V1 milestones, then add only missing behavior with end-to-end coverage.
-
-## Completion estimate
-
-Backend integrity checkpoint: complete. Overall V1 completion estimate: not reassessed in this checkpoint; requires the customer/admin and real-customer E2E audit.
+Run customer typecheck/build in the project environment, then perform focused contract regression for Text to Video and Image to Video, followed by browser-based fresh real-customer E2E. Do not reopen green backend work unless regression evidence requires it.
