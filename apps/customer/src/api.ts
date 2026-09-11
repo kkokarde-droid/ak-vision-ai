@@ -1,4 +1,4 @@
-﻿export type GenerationStatus =
+export type GenerationStatus =
   | "queued"
   | "processing"
   | "completed"
@@ -19,7 +19,6 @@ export type GenerationJob = {
   type: string;
   status: GenerationStatus;
   priority: "low" | "normal" | "high";
-  providerModelId: string | null;
   prompt: string | null;
   progress: number;
   startedAt: string | null;
@@ -217,7 +216,7 @@ export async function uploadImage(file: File) {
 export async function createGeneration(input: {
   requestId: string;
   mode?: GenerationMode;
-  providerModelId?: "dop-lite" | "dop-turbo" | "dop-standard";
+
   prompt: string;
   imageAssetId?: string;
   durationSeconds: 3 | 5;

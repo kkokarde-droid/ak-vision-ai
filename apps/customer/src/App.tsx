@@ -313,7 +313,7 @@ function App() {
       const response = await createGeneration({
         requestId: crypto.randomUUID(),
         mode,
-        ...(mode === "image_to_video" ? { providerModelId: "dop-turbo", imageAssetId: imageAssetId! } : {}),
+        ...(mode === "image_to_video" ? { imageAssetId: imageAssetId! } : {}),
         prompt: prompt.trim(),
         durationSeconds: duration,
         enhancePrompt,
@@ -540,7 +540,7 @@ function App() {
                       {mainOutput ? (
                         <div className="overflow-hidden rounded-[24px] border border-white/[0.08] bg-black">
                           <div className="aspect-[9/14] overflow-hidden bg-black">{mainOutput.mimeType.startsWith("video/") ? <video src={mainOutput.url} className="h-full w-full object-cover" controls playsInline /> : <img src={mainOutput.url} alt="Generated output" className="h-full w-full object-cover" />}</div>
-                          <div className="flex items-center justify-between p-3"><div className="text-xs text-white/40">Ready</div><a href={mainOutput.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-black"><Download size={14} /> Open</a></div>
+                          <div className="flex items-center justify-between p-3"><div className="text-xs text-white/40">Ready</div><a href={mainOutput.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-black"><Download size={14} /> Download</a></div>
                         </div>
                       ) : (
                         <div className="rounded-[24px] border border-white/[0.08] bg-black/20 p-5">
