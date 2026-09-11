@@ -55,3 +55,4 @@ p2f*-backup-*/
 services/worker/worker-storage/
 services/worker/worker-media/
 *.backup
+worker-media/

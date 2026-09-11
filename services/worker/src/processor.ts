@@ -21,6 +21,7 @@ import {
 import {
   FalProvider,
   HiggsfieldProvider,
+  MockVideoProvider,
 } from "@ak-vision-ai/providers";
 
 import type {
@@ -627,69 +628,95 @@ export function createDefaultGenerationProcessor(
   const registry =
     new ProviderRegistry();
 
-  registry.register(
-    new HiggsfieldProvider({
-      ...(process.env.HF_CREDENTIALS
-        ? {
-            credentials:
-              process.env.HF_CREDENTIALS,
-          }
-        : {}),
-      ...(process.env.HF_BASE_URL
-        ? {
-            baseURL:
-              process.env.HF_BASE_URL,
-          }
-        : {}),
-      ...(process.env.HF_POLL_INTERVAL_MS
-        ? {
-            pollIntervalMs:
-              positiveIntegerEnv(
-                "HF_POLL_INTERVAL_MS",
-                2_000,
-              ),
-          }
-        : {}),
-      ...(process.env.HF_MAX_POLL_TIME_MS
-        ? {
-            maxPollTimeMs:
-              positiveIntegerEnv(
-                "HF_MAX_POLL_TIME_MS",
-                300_000,
-              ),
-          }
-        : {}),
-    }),
-  );
+  const generationExecutionMode =
+    process.env.GENERATION_EXECUTION_MODE?.trim() ||
+    "live";
 
+  if (
+    generationExecutionMode !== "live" &&
+    generationExecutionMode !== "mock"
+  ) {
+    throw new Error(
+      "Invalid GENERATION_EXECUTION_MODE.",
+    );
+  }
 
-  if (process.env.FAL_KEY?.trim()) {
+  if (
+    generationExecutionMode === "mock" &&
+    process.env.NODE_ENV === "production"
+  ) {
+    throw new Error(
+      "Development MockVideoProvider cannot be enabled in production.",
+    );
+  }
+
+  if (generationExecutionMode === "mock") {
     registry.register(
-      new FalProvider({
-        credentials:
-          process.env.FAL_KEY,
-        ...(process.env.FAL_POLL_INTERVAL_MS
+      new MockVideoProvider(),
+    );
+  } else {
+    registry.register(
+      new HiggsfieldProvider({
+        ...(process.env.HF_CREDENTIALS
+          ? {
+              credentials:
+                process.env.HF_CREDENTIALS,
+            }
+          : {}),
+        ...(process.env.HF_BASE_URL
+          ? {
+              baseURL:
+                process.env.HF_BASE_URL,
+            }
+          : {}),
+        ...(process.env.HF_POLL_INTERVAL_MS
           ? {
               pollIntervalMs:
                 positiveIntegerEnv(
-                  "FAL_POLL_INTERVAL_MS",
+                  "HF_POLL_INTERVAL_MS",
                   2_000,
                 ),
             }
           : {}),
-        ...(process.env.FAL_MAX_POLL_TIME_MS
+        ...(process.env.HF_MAX_POLL_TIME_MS
           ? {
               maxPollTimeMs:
                 positiveIntegerEnv(
-                  "FAL_MAX_POLL_TIME_MS",
+                  "HF_MAX_POLL_TIME_MS",
                   300_000,
                 ),
             }
           : {}),
       }),
     );
-  }
 
+    if (process.env.FAL_KEY?.trim()) {
+      registry.register(
+        new FalProvider({
+          credentials:
+            process.env.FAL_KEY,
+          ...(process.env.FAL_POLL_INTERVAL_MS
+            ? {
+                pollIntervalMs:
+                  positiveIntegerEnv(
+                    "FAL_POLL_INTERVAL_MS",
+                    2_000,
+                  ),
+              }
+            : {}),
+          ...(process.env.FAL_MAX_POLL_TIME_MS
+            ? {
+                maxPollTimeMs:
+                  positiveIntegerEnv(
+                    "FAL_MAX_POLL_TIME_MS",
+                    300_000,
+                  ),
+              }
+            : {}),
+        }),
+      );
+    }
+  }
   const router =
     new AIRouter(
       registry,
@@ -723,6 +750,3 @@ export function createDefaultGenerationProcessor(
     workerId,
   );
 }
-
-
-

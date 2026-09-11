@@ -713,21 +713,19 @@ async function testTextToVideoGeneration(): Promise<void> {
 
     const body = JSON.parse(
       String(submittedInit.body),
-    ) as {
-      params: Record<string, unknown>;
-    };
+    ) as Record<string, unknown>;
 
     assert.equal(
-      body.params.prompt,
+      body.prompt,
       "A cinematic product launch in Mumbai at sunset",
     );
-    assert.equal(body.params.duration, 5);
-    assert.equal(body.params.aspect_ratio, "9:16");
-    assert.equal(body.params.resolution, "1080p");
-    assert.equal(body.params.mode, "std");
-    assert.equal(body.params.bitrate_mode, "high");
-    assert.equal(body.params.genre, "drama");
-    assert.equal(body.params.generate_audio, true);
+    assert.equal(body.duration, 5);
+    assert.equal(body.aspect_ratio, "9:16");
+    assert.equal(body.resolution, "1080p");
+    assert.equal(body.mode, "std");
+    assert.equal(body.bitrate_mode, "high");
+    assert.equal(body.genre, "drama");
+    assert.equal(body.generate_audio, true);
 
     const normalized = result.result as {
       providerRequestId: string;

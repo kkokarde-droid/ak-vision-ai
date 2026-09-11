@@ -494,8 +494,13 @@ export class HiggsfieldProvider
     }
 
     const endpoint =
-  process.env.HF_TEXT_TO_VIDEO_ENDPOINT?.trim() ||
-  "/jobs/v2/seedance_2_0";
+      process.env.HF_TEXT_TO_VIDEO_ENDPOINT?.trim();
+
+    if (!endpoint) {
+      throw new Error(
+        "Higgsfield text-to-video endpoint is not configured.",
+      );
+    }
 
     const raw =
       input.request.input as

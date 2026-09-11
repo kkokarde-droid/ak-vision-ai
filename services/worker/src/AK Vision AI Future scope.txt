@@ -1,0 +1,15 @@
+AK Vision AI Future Scope
+
+AI Core
+Model Router
+Provider Abstraction
+Credits & Usage
+Research
+Coding
+Website Builder
+App Builder
+Media Engine
+MCP Gateway
+Agents & Automation
+ERP / CRM
+Documents & Business Tools
