@@ -1,4 +1,4 @@
-﻿import {
+import {
   getCredits,
   getOwnedCreditReservation,
   settleCreditReservation,
@@ -19,6 +19,7 @@ import {
 } from "@ak-vision-ai/generation";
 
 import {
+  FalProvider,
   HiggsfieldProvider,
 } from "@ak-vision-ai/providers";
 
@@ -313,6 +314,12 @@ export class AIExecutorGenerationProcessor
         : {}),
       taskType:
         "video-generation" as const,
+      ...(job.providerId
+        ? {
+            providerId:
+              job.providerId,
+          }
+        : {}),
       prompt:
         job.prompt ?? "",
       mode:
@@ -654,6 +661,34 @@ export function createDefaultGenerationProcessor(
         : {}),
     }),
   );
+
+
+  if (process.env.FAL_KEY?.trim()) {
+    registry.register(
+      new FalProvider({
+        credentials:
+          process.env.FAL_KEY,
+        ...(process.env.FAL_POLL_INTERVAL_MS
+          ? {
+              pollIntervalMs:
+                positiveIntegerEnv(
+                  "FAL_POLL_INTERVAL_MS",
+                  2_000,
+                ),
+            }
+          : {}),
+        ...(process.env.FAL_MAX_POLL_TIME_MS
+          ? {
+              maxPollTimeMs:
+                positiveIntegerEnv(
+                  "FAL_MAX_POLL_TIME_MS",
+                  300_000,
+                ),
+            }
+          : {}),
+      }),
+    );
+  }
 
   const router =
     new AIRouter(

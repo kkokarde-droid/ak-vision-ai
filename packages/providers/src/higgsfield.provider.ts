@@ -494,13 +494,8 @@ export class HiggsfieldProvider
     }
 
     const endpoint =
-      process.env.HF_TEXT_TO_VIDEO_ENDPOINT?.trim();
-
-    if (!endpoint) {
-      throw new Error(
-        "Higgsfield text-to-video endpoint is not configured. Set HF_TEXT_TO_VIDEO_ENDPOINT.",
-      );
-    }
+  process.env.HF_TEXT_TO_VIDEO_ENDPOINT?.trim() ||
+  "/jobs/v2/seedance_2_0";
 
     const raw =
       input.request.input as
@@ -613,17 +608,36 @@ export class HiggsfieldProvider
         ? raw.generate_audio
         : true;
 
-    const videoInput = {
-      model: "seedance_2_0",
-      prompt,
-      duration,
-      aspect_ratio: aspectRatio,
-      resolution,
-      mode,
-      bitrate_mode: bitrateMode,
-      genre,
-      generate_audio: generateAudio,
-    };
+    const dimensionsByAspectRatio: Record<
+  string,
+  { width: number; height: number }
+> = {
+  "16:9": { width: 1280, height: 720 },
+  "9:16": { width: 720, height: 1280 },
+  "4:3": { width: 960, height: 720 },
+  "3:4": { width: 720, height: 960 },
+  "1:1": { width: 720, height: 720 },
+  "21:9": { width: 1680, height: 720 },
+};
+
+const dimensions =
+  dimensionsByAspectRatio[aspectRatio] ??
+  { width: 720, height: 720 };
+
+const videoInput = {
+  model: "seedance_2_0",
+  prompt,
+  aspect_ratio: aspectRatio,
+  batch_size: 1,
+  duration,
+  resolution,
+  width: dimensions.width,
+  height: dimensions.height,
+  mode,
+  bitrate_mode: bitrateMode,
+  genre,
+  generate_audio: generateAudio,
+};
 
     const fullEndpoint =
       endpoint.startsWith("http://") ||
@@ -645,9 +659,7 @@ export class HiggsfieldProvider
               "Content-Type":
                 "application/json",
             },
-            body: JSON.stringify({
-              params: videoInput,
-            }),
+            body: JSON.stringify(videoInput),
             ...(context.signal !== undefined
               ? {
                   signal:

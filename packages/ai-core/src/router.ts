@@ -36,7 +36,18 @@ export class AIRouter {
     const taskType = input.taskType ?? input.request.taskType;
     const mode = input.request.mode;
 
-    const eligibleProviders = this.registry.findForTask(taskType);
+    const requestedProviderId =
+      input.request.providerId?.trim();
+
+    const eligibleProviders =
+      this.registry
+        .findForTask(taskType)
+        .filter(
+          (provider) =>
+            !requestedProviderId ||
+            provider.providerId ===
+              requestedProviderId,
+        );
 
     if (eligibleProviders.length === 0) {
       throw new Error(`No provider available for task type: ${taskType}`);
@@ -117,3 +128,4 @@ export class AIRouter {
     return `Selected ${provider.providerName} for ${mode} mode.`;
   }
 }
+
