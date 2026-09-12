@@ -52,10 +52,178 @@ type FalQueueResult = {
   requestId?: string;
 };
 
+function isRecord(
+  value: unknown,
+): value is Record<string, unknown> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  );
+}
+
+function readFalHttpStatus(
+  error: unknown,
+): number | undefined {
+  if (!isRecord(error)) {
+    return undefined;
+  }
+
+  const candidates = [
+    error.status,
+    error.statusCode,
+    isRecord(error.response)
+      ? error.response.status
+      : undefined,
+  ];
+
+  for (const candidate of candidates) {
+    if (
+      typeof candidate === "number" &&
+      Number.isInteger(candidate) &&
+      candidate >= 100 &&
+      candidate <= 599
+    ) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+function readFalErrorDetail(
+  error: unknown,
+): string | undefined {
+  if (isRecord(error)) {
+    const response =
+      isRecord(error.response)
+        ? error.response
+        : undefined;
+
+    const responseData =
+      response && isRecord(response.data)
+        ? response.data
+        : undefined;
+
+    const candidates = [
+      error.detail,
+      error.message,
+      responseData?.detail,
+      responseData?.message,
+      responseData?.error,
+      responseData?.reason,
+    ];
+
+    for (const candidate of candidates) {
+      if (
+        typeof candidate === "string" &&
+        candidate.trim()
+      ) {
+        /*
+         * Prefer structured response detail when available.
+         * This preserves useful upstream authorization/validation
+         * messages instead of collapsing everything to "Forbidden".
+         */
+        if (
+          responseData?.detail === candidate ||
+          responseData?.message === candidate ||
+          responseData?.error === candidate ||
+          responseData?.reason === candidate
+        ) {
+          return candidate.trim();
+        }
+      }
+    }
+
+    for (const candidate of candidates) {
+      if (
+        typeof candidate === "string" &&
+        candidate.trim()
+      ) {
+        return candidate.trim();
+      }
+    }
+  }
+
+  if (
+    error instanceof Error &&
+    error.message.trim()
+  ) {
+    return error.message.trim();
+  }
+
+  return undefined;
+}
+export class FalProviderError
+  extends Error {
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly retryable: boolean,
+    public readonly statusCode?: number,
+  ) {
+    super(message);
+    this.name = "FalProviderError";
+  }
+}
+
+function normalizeFalProviderError(
+  prefix: string,
+  error: unknown,
+): FalProviderError {
+  const statusCode =
+    readFalHttpStatus(error);
+
+  const detail =
+    readFalErrorDetail(error);
+
+  let code =
+    "PROVIDER_EXECUTION_FAILED";
+
+  let retryable = true;
+
+  if (statusCode === 401) {
+    code =
+      "PROVIDER_AUTHENTICATION_FAILED";
+    retryable = false;
+  } else if (statusCode === 403) {
+    code =
+      "PROVIDER_AUTHORIZATION_FAILED";
+    retryable = false;
+  } else if (
+    statusCode === 400 ||
+    statusCode === 422
+  ) {
+    code =
+      "PROVIDER_INVALID_REQUEST";
+    retryable = false;
+  } else if (statusCode === 429) {
+    code =
+      "PROVIDER_RATE_LIMITED";
+    retryable = true;
+  } else if (
+    statusCode !== undefined &&
+    statusCode >= 500
+  ) {
+    code =
+      "PROVIDER_UPSTREAM_FAILED";
+    retryable = true;
+  }
+
+  return new FalProviderError(
+    detail
+      ? `${prefix}: ${detail}`
+      : prefix,
+    code,
+    retryable,
+    statusCode,
+  );
+}
 export type FalProviderOptions = {
   credentials?: string;
   pollIntervalMs?: number;
   maxPollTimeMs?: number;
+  client?: typeof fal;
 };
 
 export class FalProvider implements AIProvider {
@@ -70,6 +238,7 @@ export class FalProvider implements AIProvider {
     "text-to-video",
   ] as const;
 
+  private readonly client: typeof fal;
   private readonly credentials: string;
   private readonly pollIntervalMs: number;
   private readonly maxPollTimeMs: number;
@@ -77,6 +246,10 @@ export class FalProvider implements AIProvider {
   constructor(
     options: FalProviderOptions = {},
   ) {
+    this.client =
+      options.client ??
+      fal;
+
     const credentials =
       options.credentials ??
       process.env.FAL_KEY?.trim();
@@ -123,7 +296,7 @@ export class FalProvider implements AIProvider {
       );
     }
 
-    fal.config({
+    this.client.config({
       credentials: this.credentials,
     });
   }
@@ -254,17 +427,17 @@ export class FalProvider implements AIProvider {
 
     try {
       submitted =
-        await fal.queue.submit(
+        await this.client.queue.submit(
           FAL_T2V_ENDPOINT,
           {
             input:
               requestInput,
           },
         );
-    } catch (error) {      throw new Error(
-        error instanceof Error
-          ? `Fal Seedance 2.0 submission failed: ${error.message}`
-          : "Fal Seedance 2.0 submission failed.",
+        } catch (error) {
+      throw normalizeFalProviderError(
+        "Fal Seedance 2.0 submission failed.",
+        error,
       );
     }
 
@@ -309,18 +482,17 @@ export class FalProvider implements AIProvider {
 
       try {
         status =
-          await fal.queue.status(
+          await this.client.queue.status(
             FAL_T2V_ENDPOINT,
             {
               requestId:
                 providerRequestId,
             },
           ) as FalQueueStatus;
-      } catch (error) {
-        throw new Error(
-          error instanceof Error
-            ? `Fal Seedance 2.0 status check failed: ${error.message}`
-            : "Fal Seedance 2.0 status check failed.",
+            } catch (error) {
+        throw normalizeFalProviderError(
+          "Fal Seedance 2.0 status check failed.",
+          error,
         );
       }
 
@@ -348,18 +520,17 @@ export class FalProvider implements AIProvider {
 
         try {
           result =
-            await fal.queue.result(
+            await this.client.queue.result(
               FAL_T2V_ENDPOINT,
               {
                 requestId:
                   providerRequestId,
               },
             ) as FalQueueResult;
-        } catch (error) {
-          throw new Error(
-            error instanceof Error
-              ? `Fal Seedance 2.0 result retrieval failed: ${error.message}`
-              : "Fal Seedance 2.0 result retrieval failed.",
+                } catch (error) {
+          throw normalizeFalProviderError(
+            "Fal Seedance 2.0 result retrieval failed.",
+            error,
           );
         }
 
