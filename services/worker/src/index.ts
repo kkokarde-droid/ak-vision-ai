@@ -72,11 +72,18 @@ if (
   );
 }
 
-if (
-  !process.env.HF_CREDENTIALS?.trim()
-) {
+const hasHiggsfieldCredentials =
+  Boolean(
+    process.env.HF_CREDENTIALS?.trim(),
+  ) ||
+  (
+    Boolean(process.env.HF_API_KEY?.trim()) &&
+    Boolean(process.env.HF_API_SECRET?.trim())
+  );
+
+if (!hasHiggsfieldCredentials) {
   throw new Error(
-    "HF_CREDENTIALS is required for the V1 generation worker.",
+    "Higgsfield credentials are required: set HF_CREDENTIALS or both HF_API_KEY and HF_API_SECRET.",
   );
 }
 

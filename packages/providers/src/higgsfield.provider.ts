@@ -128,14 +128,12 @@ export class HiggsfieldProvider
   ) {
     this.credentials =
       options.credentials ??
-      process.env.HF_CREDENTIALS ??
       (
-        process.env.HF_API_KEY &&
-        process.env.HF_API_SECRET
+        process.env.HF_API_KEY?.trim() &&
+        process.env.HF_API_SECRET?.trim()
           ? `${process.env.HF_API_KEY}:${process.env.HF_API_SECRET}`
-          : undefined
+          : process.env.HF_CREDENTIALS
       );
-
     const clientConfig: {
       credentials?: string;
       baseURL?: string;
