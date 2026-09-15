@@ -316,12 +316,17 @@ export class AIExecutorGenerationProcessor
         : {}),
       taskType:
         "video-generation" as const,
-      ...(this.executionMode === "live" && job.providerId
-  ? {
-      providerId:
-        job.providerId,
-    }
-  : {}),
+      ...(this.executionMode === "mock"
+        ? {
+            providerId:
+              "mock-video",
+          }
+        : job.providerId
+          ? {
+              providerId:
+                job.providerId,
+            }
+          : {}),
       prompt:
         job.prompt ?? "",
       mode:
