@@ -51,6 +51,19 @@ button {
   cursor: pointer;
 }
 
+:where(button, a, input, textarea, select):focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.55);
+  outline-offset: 3px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+img,
+video {
+  display: block;
+}
 ::selection {
   background: rgba(217, 70, 239, 0.28);
 }

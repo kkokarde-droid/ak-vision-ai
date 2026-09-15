@@ -132,7 +132,7 @@ function App() {
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [imageFileName, setImageFileName] = useState<string | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [duration, setDuration] = useState<3 | 5>(5);
+  const [duration, setDuration] = useState<number>(5);
   const [enhancePrompt, setEnhancePrompt] = useState(true);
   const [currentJob, setCurrentJob] = useState<GenerationJob | null>(null);
   const [outputs, setOutputs] = useState<GenerationOutput[]>([]);
@@ -296,6 +296,7 @@ function App() {
     if (!selected?.enabled) return;
     setMode(nextMode);
     setError(null);
+    if (nextMode === "text_to_video" && duration < 4) setDuration(5);
     if (nextMode !== "image_to_video") {
       setImageAssetId(null);
       setImagePreviewUrl(null);
@@ -356,12 +357,12 @@ function App() {
   const mainOutput = outputs[0] ?? null;
   const activeStatus = currentJob?.status ?? null;
   const generationCardTitle = activeStatus === "completed"
-    ? "Generation ready"
+    ? "Your video is ready"
     : activeStatus === "failed"
       ? "Generation needs attention"
       : activeStatus === "cancelled"
         ? "Generation cancelled"
-        : "Your latest generation";
+        : "Latest creation";
 
   if (authLoading) {
     return (
@@ -422,7 +423,7 @@ function App() {
               <button type="button" className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-white/45 hover:bg-white/[0.04] hover:text-white"><Clapperboard size={17} /> Projects</button>
             </nav>
 
-            <div className="mt-8 text-[10px] uppercase tracking-[0.2em] text-white/25">Recent creations</div>
+            <div id="recent-creations" className="mt-8 text-[10px] uppercase tracking-[0.2em] text-white/25">Recent creations</div>
             <div className="mt-3 flex-1 space-y-2 overflow-y-auto">
               {history.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-white/10 p-4 text-xs leading-5 text-white/35">Your recent generations will appear here.</div>
@@ -462,9 +463,9 @@ function App() {
             <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
               <div>
                 <div className="mb-7 max-w-3xl">
-                  <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/[0.07] bg-white/[0.035] px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-white/45"><WandSparkles size={13} /> AI Creative Studio</div>
-                  <h1 className="text-4xl font-semibold leading-tight tracking-[-0.045em] sm:text-5xl lg:text-6xl">Create without thinking about the plumbing.</h1>
-                  <p className="mt-4 max-w-2xl text-sm leading-6 text-white/45 sm:text-base">Describe what you want in the language you naturally use. AK Vision AI handles routing, generation and rendering behind the scenes.</p>
+                  <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/[0.07] bg-white/[0.035] px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-white/45"><WandSparkles size={13} /> AI Video Workspace</div>
+                  <h1 className="text-4xl font-semibold leading-tight tracking-[-0.045em] sm:text-5xl lg:text-6xl">Turn an idea into a video.</h1>
+                  <p className="mt-4 max-w-2xl text-sm leading-6 text-white/45 sm:text-base">Describe what you want naturally. Upload a visual when it helps. AK Vision AI handles the technical work behind the scenes.</p>
                 </div>
 
                 <div className="rounded-[30px] border border-white/[0.08] bg-white/[0.035] p-4 shadow-[0_30px_100px_rgba(0,0,0,0.3)] sm:p-6">
@@ -473,7 +474,7 @@ function App() {
                       const Icon = item.icon;
                       const active = mode === item.id;
                       return (
-                        <button key={item.id} type="button" disabled={!item.enabled} onClick={() => selectMode(item.id)} className={["relative rounded-2xl border p-4 text-left transition", active ? "border-white/20 bg-white/[0.10] shadow-[0_12px_40px_rgba(0,0,0,0.18)]" : "border-white/[0.07] bg-white/[0.025] hover:border-white/[0.13] hover:bg-white/[0.05]", !item.enabled ? "cursor-not-allowed opacity-45" : ""].join(" ")}>
+                        <button key={item.id} type="button" aria-pressed={active} disabled={!item.enabled} onClick={() => selectMode(item.id)} className={["relative rounded-2xl border p-4 text-left transition", active ? "border-white/20 bg-white/[0.10] shadow-[0_12px_40px_rgba(0,0,0,0.18)]" : "border-white/[0.07] bg-white/[0.025] hover:border-white/[0.13] hover:bg-white/[0.05]", !item.enabled ? "cursor-not-allowed opacity-45" : ""].join(" ")}>
                           {!item.enabled && <span className="absolute right-3 top-3 rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[9px] uppercase tracking-[0.16em] text-white/35">Coming soon</span>}
                           <Icon size={18} className="text-white/65" />
                           <div className="mt-4 text-sm font-semibold">{item.title}</div>
@@ -484,7 +485,11 @@ function App() {
                   </div>
 
                   <div className="mt-5 rounded-[24px] border border-white/[0.08] bg-black/20 p-4 sm:p-5">
-                    <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={10000} className="min-h-44 w-full resize-none bg-transparent text-base leading-7 text-white outline-none placeholder:text-white/20 sm:text-lg" placeholder={mode === "image_to_video" ? "Describe how you want your image to move, feel and transform..." : "Describe the video you want to create... English, हिंदी, मराठी, 中文 and more are welcome."} />
+                    <textarea aria-label="Describe your video" value={prompt} onChange={(event) => setPrompt(event.target.value)} maxLength={10000} className="min-h-44 w-full resize-none bg-transparent text-base leading-7 text-white outline-none placeholder:text-white/20 sm:text-lg" placeholder={mode === "image_to_video" ? "Describe how you want your image to move, feel and transform..." : "Describe the video you want to create... English, हिंदी, मराठी, 中文 and more are welcome."} />
+                    <div className="mt-3 flex items-center justify-between gap-3 text-[10px] text-white/25">
+                      <span>Describe the outcome, mood, subject and camera movement.</span>
+                      <span className="shrink-0">{prompt.length.toLocaleString("en-IN")}/10,000</span>
+                    </div>
                     <div className="mt-4 flex flex-wrap gap-2">
                       {promptIdeas.map((idea) => <button key={idea} type="button" onClick={() => setPrompt(idea)} className="rounded-full border border-white/[0.07] bg-white/[0.025] px-3 py-2 text-[11px] text-white/45 hover:border-white/15 hover:text-white/75">{idea}</button>)}
                     </div>
@@ -496,7 +501,7 @@ function App() {
                         <div className="flex items-center gap-2 text-sm font-medium"><ImageIcon size={15} /> Reference image</div>
                         <span className="text-xs text-white/30">JPG, PNG or WebP · max 10 MB</span>
                       </div>
-                      <input id="reference-image-upload" type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={isUploadingImage} onChange={(event) => { void handleImageSelected(event.target.files?.[0]); event.currentTarget.value = ""; }} />
+                      <input id="reference-image-upload" aria-label="Upload reference image" type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={isUploadingImage} onChange={(event) => { void handleImageSelected(event.target.files?.[0]); event.currentTarget.value = ""; }} />
                       <label htmlFor="reference-image-upload" className="block cursor-pointer rounded-2xl border border-dashed border-white/[0.10] bg-white/[0.025] p-5 hover:border-white/20 hover:bg-white/[0.04]">
                         {imagePreviewUrl ? (
                           <div className="flex items-center gap-4">
@@ -512,7 +517,22 @@ function App() {
                   )}
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <SelectField label="Duration" value={String(duration)} onChange={(value) => setDuration(value === "3" ? 3 : 5)} options={[["3", "3 seconds"], ["5", "5 seconds"]]} />
+                    <SelectField
+  label="Duration"
+  value={String(duration)}
+  onChange={(value) => setDuration(Number(value))}
+  options={
+    mode === "text_to_video"
+      ? Array.from({ length: 12 }, (_, index) => {
+          const seconds = index + 4;
+          return [String(seconds), `${seconds} seconds`] as [string, string];
+        })
+      : [
+          ["3", "3 seconds"],
+          ["5", "5 seconds"],
+        ]
+  }
+/>
                     <label className="flex items-center justify-between rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
                       <div><div className="text-sm font-medium text-white/80">Polish my prompt</div><div className="mt-1 text-xs text-white/30">Improve creative direction before generation.</div></div>
                       <input type="checkbox" checked={enhancePrompt} onChange={(event) => setEnhancePrompt(event.target.checked)} className="h-4 w-4 accent-white" />
@@ -524,7 +544,7 @@ function App() {
                   <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="text-xs leading-5 text-white/30">Your price is calculated server-side from the active pricing policy.</div>
                     <button type="button" disabled={!canGenerate} onClick={() => void handleGenerate()} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-6 py-3.5 text-sm font-semibold text-black transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-35">
-                      {isSubmitting ? <><LoaderCircle size={16} className="animate-spin" /> Starting...</> : <><Sparkles size={16} /> Generate video</>}
+                      {isSubmitting ? <><LoaderCircle size={16} className="animate-spin" /> Starting...</> : <><Sparkles size={16} /> Generate {duration}s video</>}
                     </button>
                   </div>
                 </div>

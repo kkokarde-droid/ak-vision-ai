@@ -1,4 +1,4 @@
-﻿import {
+import {
 before, after, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -2580,3 +2580,395 @@ test(
 );
 
 
+
+test(
+  "P3-61E generation quote returns customer-safe price without reserving credits",
+  async () => {
+    const fixture =
+      await createUserFixture(2000);
+
+    try {
+      const response =
+        await app.inject({
+          method: "POST",
+          url:
+            "/api/v1/generation/quote",
+          headers: {
+            cookie:
+              `ak_vision_session=${fixture.token}`,
+          },
+          payload: {
+            mode:
+              "text_to_video",
+            durationSeconds:
+              5,
+          },
+        });
+
+      assert.equal(
+        response.statusCode,
+        200,
+      );
+
+      const body =
+        response.json() as {
+          status: string;
+          data: {
+            pricingVersion: string;
+            currency: string;
+            creditsRequired: number;
+            customerChargeMinor: number;
+            quotedAt: string;
+            providerModelId?: string;
+          };
+        };
+
+      assert.equal(
+        body.status,
+        "ok",
+      );
+
+      assert.equal(
+        body.data.currency,
+        "INR",
+      );
+
+      assert.ok(
+        body.data.pricingVersion.length > 0,
+      );
+
+      assert.ok(
+        body.data.creditsRequired > 0,
+      );
+
+      assert.ok(
+        body.data.customerChargeMinor > 0,
+      );
+
+      assert.ok(
+        Number.isFinite(
+          Date.parse(body.data.quotedAt),
+        ),
+      );
+
+      assert.equal(
+        "providerModelId" in body.data,
+        false,
+      );
+
+      const balanceResult =
+        await db
+          .select({
+            availableCredits:
+              creditBalances.availableCredits,
+            reservedCredits:
+              creditBalances.reservedCredits,
+          })
+          .from(creditBalances)
+          .where(
+            eq(
+              creditBalances.id,
+              fixture.balanceId,
+            ),
+          )
+          .limit(1);
+
+      const balance =
+        balanceResult[0];
+
+      assert.ok(balance);
+
+      assert.equal(
+        balance.availableCredits,
+        2000,
+      );
+
+      assert.equal(
+        balance.reservedCredits,
+        0,
+      );
+
+      const reservations =
+        await db
+          .select({
+            id:
+              creditReservations.id,
+          })
+          .from(creditReservations)
+          .where(
+            eq(
+              creditReservations.userId,
+              fixture.userId,
+            ),
+          );
+
+      assert.equal(
+        reservations.length,
+        0,
+      );
+    } finally {
+      await cleanupFixture(fixture);
+    }
+  },
+);
+
+test(
+  "P3-61E image-to-video quote uses the supported image pricing path",
+  async () => {
+    const fixture =
+      await createUserFixture(2000);
+
+    try {
+      const response =
+        await app.inject({
+          method: "POST",
+          url:
+            "/api/v1/generation/quote",
+          headers: {
+            cookie:
+              `ak_vision_session=${fixture.token}`,
+          },
+          payload: {
+            mode:
+              "image_to_video",
+            durationSeconds:
+              5,
+          },
+        });
+
+      assert.equal(
+        response.statusCode,
+        200,
+      );
+
+      const body =
+        response.json() as {
+          status: string;
+          data: {
+            currency: string;
+            creditsRequired: number;
+          };
+        };
+
+      assert.equal(
+        body.status,
+        "ok",
+      );
+
+      assert.equal(
+        body.data.currency,
+        "INR",
+      );
+
+      assert.ok(
+        body.data.creditsRequired > 0,
+      );
+    } finally {
+      await cleanupFixture(fixture);
+    }
+  },
+);
+
+test(
+  "P3-61E unavailable quote modes are rejected",
+  async () => {
+    const fixture =
+      await createUserFixture(2000);
+
+    try {
+      const response =
+        await app.inject({
+          method: "POST",
+          url:
+            "/api/v1/generation/quote",
+          headers: {
+            cookie:
+              `ak_vision_session=${fixture.token}`,
+          },
+          payload: {
+            mode:
+              "ai_director",
+            durationSeconds:
+              5,
+          },
+        });
+
+      assert.equal(
+        response.statusCode,
+        400,
+      );
+
+      const body =
+        response.json() as {
+          status: string;
+          code: string;
+        };
+
+      assert.equal(
+        body.status,
+        "error",
+      );
+
+      assert.equal(
+        body.code,
+        "BAD_REQUEST",
+      );
+    } finally {
+      await cleanupFixture(fixture);
+    }
+  },
+);
+
+test(
+  "P3-61E quote rejects provider-facing fields",
+  async () => {
+    const fixture =
+      await createUserFixture(2000);
+
+    try {
+      const response =
+        await app.inject({
+          method: "POST",
+          url:
+            "/api/v1/generation/quote",
+          headers: {
+            cookie:
+              `ak_vision_session=${fixture.token}`,
+          },
+          payload: {
+            mode:
+              "text_to_video",
+            durationSeconds:
+              5,
+            providerModelId:
+              "dop-turbo",
+          },
+        });
+
+      assert.equal(
+        response.statusCode,
+        400,
+      );
+    } finally {
+      await cleanupFixture(fixture);
+    }
+  },
+);
+
+test(
+  "P3-61E quote requires authentication",
+  async () => {
+    const response =
+      await app.inject({
+        method: "POST",
+        url:
+          "/api/v1/generation/quote",
+        payload: {
+          mode:
+            "text_to_video",
+          durationSeconds:
+            5,
+        },
+      });
+
+    assert.equal(
+      response.statusCode,
+      401,
+    );
+  },
+);
+test(
+  "P3-61E T2V duration contract accepts 4-15 and rejects outside the range",
+  async () => {
+    const fixture =
+      await createUserFixture(100000);
+
+    try {
+      async function createTextToVideo(
+        durationSeconds: number,
+      ) {
+        return app.inject({
+          method: "POST",
+          url:
+            "/api/v1/generation",
+          headers: {
+            cookie:
+              `ak_vision_session=${fixture.token}`,
+          },
+          payload: {
+            requestId:
+              randomUUID(),
+            mode:
+              "text_to_video",
+            prompt:
+              "A cinematic product launch in a modern studio",
+            durationSeconds,
+          },
+        });
+      }
+
+      const invalidLow =
+        await createTextToVideo(3);
+
+      assert.equal(
+        invalidLow.statusCode,
+        400,
+      );
+
+      const validMin =
+        await createTextToVideo(4);
+
+      assert.equal(
+        validMin.statusCode,
+        201,
+      );
+
+      const minBody =
+        validMin.json() as {
+          status: string;
+          data: {
+            job: {
+              providerId: string | null;
+              providerModelId:
+                string | null;
+            };
+          };
+        };
+
+      assert.equal(
+        minBody.status,
+        "ok",
+      );
+
+      assert.equal(
+        minBody.data.job.providerId,
+        "fal",
+      );
+
+      assert.equal(
+        minBody.data.job.providerModelId,
+        "seedance_2_0",
+      );
+
+      const validMax =
+        await createTextToVideo(15);
+
+      assert.equal(
+        validMax.statusCode,
+        201,
+      );
+
+      const invalidHigh =
+        await createTextToVideo(16);
+
+      assert.equal(
+        invalidHigh.statusCode,
+        400,
+      );
+    } finally {
+      await cleanupFixture(
+        fixture,
+      );
+    }
+  },
+);

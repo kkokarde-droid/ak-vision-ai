@@ -219,7 +219,7 @@ export async function createGeneration(input: {
 
   prompt: string;
   imageAssetId?: string;
-  durationSeconds: 3 | 5;
+  durationSeconds: number;
   priority?: "low" | "normal" | "high";
   enhancePrompt?: boolean;
   seed?: number;
