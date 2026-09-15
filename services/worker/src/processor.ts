@@ -1,4 +1,4 @@
-import {
+﻿import {
   getCredits,
   getOwnedCreditReservation,
   settleCreditReservation,
@@ -246,11 +246,12 @@ function positiveIntegerEnv(
 export class AIExecutorGenerationProcessor
   implements GenerationProcessor {
   constructor(
-    private readonly executor: AIExecutor,
-    private readonly workerId: string,
-      private readonly storage: MediaStorage =
-      createDefaultMediaStorage(),
-  ) {
+  private readonly executor: AIExecutor,
+  private readonly workerId: string,
+  private readonly storage: MediaStorage =
+    createDefaultMediaStorage(),
+  private readonly executionMode: "live" | "mock" = "live",
+) {
     if (!workerId.trim()) {
       throw new Error(
         "workerId is required",
@@ -315,12 +316,12 @@ export class AIExecutorGenerationProcessor
         : {}),
       taskType:
         "video-generation" as const,
-      ...(job.providerId
-        ? {
-            providerId:
-              job.providerId,
-          }
-        : {}),
+      ...(this.executionMode === "live" && job.providerId
+  ? {
+      providerId:
+        job.providerId,
+    }
+  : {}),
       prompt:
         job.prompt ?? "",
       mode:
@@ -717,15 +718,18 @@ export function createDefaultGenerationProcessor(
       );
     }
   }
+  const preferredProviderId =
+    generationExecutionMode === "mock"
+      ? "mock-video"
+      : "higgsfield";
+
   const router =
     new AIRouter(
       registry,
       {
-        preferredProviderId:
-          "higgsfield",
+        preferredProviderId,
       },
     );
-
   const executor =
     new AIExecutor(
       router,
@@ -746,7 +750,9 @@ export function createDefaultGenerationProcessor(
     );
 
   return new AIExecutorGenerationProcessor(
-    executor,
-    workerId,
-  );
+  executor,
+  workerId,
+  createDefaultMediaStorage(),
+  generationExecutionMode,
+);
 }
