@@ -18,7 +18,7 @@
                     "db:migrate":  "drizzle-kit migrate",
                     "db:push":  "drizzle-kit push",
                     "db:studio":  "drizzle-kit studio",
-                    "test":  "node ./dist/connection-test.js"
+                    "test": "node --env-file=../../.env ./dist/connection-test.js"
                 },
     "dependencies":  {
                          "drizzle-orm":  "^0.45.2",

@@ -207,7 +207,91 @@ const GenerationReadQuerySchema =  Type.Object({    organizationId: Type.Optiona
           "INVALID_INPUT",
         );
       }
-      let providerModelId:        | "seedance_2_0"        | "dop-lite"        | "dop-turbo"        | "dop-standard";      switch (mode) {        case "text_to_video":          providerModelId =            "seedance_2_0";          break;        case "image_to_video":          providerModelId =            request.body.providerModelId ??            "dop-turbo";          break;        case "video_to_video":        case "ai_director":          throw new GenerationRepositoryError(            `${mode} is not available yet.`,            "INVALID_INPUT",          );        default:          throw new GenerationRepositoryError(            "Unsupported generation mode.",            "INVALID_INPUT",          );      }        const result =          await db.transaction(            async (tx) => {              /*               * requestId is the API idempotency boundary.               * Serialize identical requests before pricing,               * reservation, and job creation.               */              await tx.execute(                sql.raw(                  "select pg_advisory_xact_lock(" +                  "hashtextextended('" +                  request.body.requestId.replace(/'/g, "''") +                  "', 0))",                ),              );              const existingResult =                await tx                  .select()                  .from(generationJobs)                  .where(                    eq(                      generationJobs.requestId,                      request.body.requestId,                    ),                  )                  .limit(1);              const existing =                existingResult[0];              if (existing) {                if (                  existing.userId !==                    actor.userId ||                  (existing.organizationId ??                    null) !==                    (request.body.organizationId ??                      null)                ) {                  throw new GenerationRepositoryError(                    "Generation request belongs to a different owner",                    "IDEMPOTENCY_CONFLICT",                  );                }                const existingInput =                  (existing.input ??                    {}) as Record<                    string,                    unknown                  >;                const requestedImageInput =                  request.body.imageAssetId ??                  request.body.imageUrl?.trim() ??                  null;                const existingImageInput =                  typeof existingInput.imageAssetId ===                    "string"                    ? existingInput.imageAssetId                    : typeof existingInput.imageUrl ===                        "string"                      ? existingInput.imageUrl                      : null;                const sameRequest =                  existing.providerId === (mode === "text_to_video" ? textToVideoProviderId : "higgsfield") &&                  existing.providerModelId ===                    providerModelId &&                  existing.prompt ===                    request.body.prompt &&                  existingImageInput ===                    requestedImageInput &&                  existingInput.duration ===                    request.body.durationSeconds &&                  (existingInput.enhance_prompt ??                    undefined) ===                    request.body.enhancePrompt &&                  (existingInput.seed ??                    undefined) ===                    request.body.seed &&                  (existing.priority ??                    "normal") ===                    (request.body.priority ??                      "normal");                if (!sameRequest) {                  throw new GenerationRepositoryError(                    "Generation request idempotency key was already used with a different payload",                    "IDEMPOTENCY_CONFLICT",                  );                }                return {                  job: existing,                  replayed: true,                };              }              if (                request.body.organizationId              ) {                const accessResult =                  await tx                    .select({                      organizationId:                        organizations.id,                      ownerUserId:                        organizations.ownerUserId,                      membershipUserId:                        organizationMemberships.userId,                    })                    .from(organizations)                    .leftJoin(                      organizationMemberships,                      and(                        eq(                          organizationMemberships.organizationId,                          organizations.id,                        ),                        eq(                          organizationMemberships.userId,                          actor.userId,                        ),                      ),                    )                    .where(                      eq(                        organizations.id,                        request.body.organizationId,                      ),                    )                    .limit(1);                const access =                  accessResult[0];                if (                  !access ||                  (                    access.ownerUserId !==                      actor.userId &&                    access.membershipUserId !==                      actor.userId                  )                ) {                  throw new GenerationRepositoryError(                    "Generation request belongs to a different owner",                    "IDEMPOTENCY_CONFLICT",                  );                }              }              const hasImageAsset =
+      let providerModelId:        | "seedance_2_0"        | "dop-lite"        | "dop-turbo"        | "dop-standard";      switch (mode) {        case "text_to_video":          providerModelId =            "seedance_2_0";          break;        case "image_to_video":          providerModelId =            request.body.providerModelId ??            "dop-turbo";          break;        case "video_to_video":        case "ai_director":          throw new GenerationRepositoryError(            `${mode} is not available yet.`,            "INVALID_INPUT",          );        default:          throw new GenerationRepositoryError(            "Unsupported generation mode.",            "INVALID_INPUT",          );      }        const result =          await db.transaction(            async (tx) => {              /*               * requestId is the API idempotency boundary.               * Serialize identical requests before pricing,               * reservation, and job creation.               */              await tx.execute(                sql.raw(                  "select pg_advisory_xact_lock(" +                  "hashtextextended('" +                  request.body.requestId.replace(/'/g, "''") +                  "', 0))",                ),              );              const existingResult =                await tx                  .select()                  .from(generationJobs)                  .where(                    eq(                      generationJobs.requestId,                      request.body.requestId,                    ),                  )                  .limit(1);              const existing =                existingResult[0];              if (existing) {                if (                  existing.userId !==                    actor.userId ||                  (existing.organizationId ??                    null) !==                    (request.body.organizationId ??                      null)                ) {                  throw new GenerationRepositoryError(                    "Generation request belongs to a different owner",                    "IDEMPOTENCY_CONFLICT",                  );                }                const existingInput =                  (existing.input ??                    {}) as Record<                    string,                    unknown                  >;                                const existingMode =
+  typeof existingInput.mode === "string"
+    ? existingInput.mode
+    : existing.providerModelId === "dop-turbo"
+      ? "image_to_video"
+      : "text_to_video";
+
+const requestedMode = mode;
+
+const requestedImageInput =
+  request.body.imageAssetId ??
+  request.body.imageUrl?.trim() ??
+  null;
+
+const existingImageInput =
+  typeof existingInput.imageAssetId === "string"
+    ? existingInput.imageAssetId
+    : typeof existingInput.imageUrl === "string"
+      ? existingInput.imageUrl
+      : null;
+
+const existingDuration =
+  Number(existingInput.duration);
+
+const requestedDuration =
+  Number(request.body.durationSeconds);
+
+                const existingEnhancePrompt =
+                  existingInput.enhance_prompt === undefined
+                    ? true
+                    : Boolean(existingInput.enhance_prompt);
+
+                const requestedEnhancePrompt =
+                  request.body.enhancePrompt ?? true;
+
+                const existingSeed =
+                  existingInput.seed === undefined
+                    ? undefined
+                    : Number(existingInput.seed);
+
+                const requestedSeed =
+                  request.body.seed === undefined
+                    ? undefined
+                    : Number(request.body.seed);
+
+                const sameSeed =
+                  existingSeed === undefined
+                    ? requestedSeed === undefined
+                    : existingSeed === requestedSeed;
+
+                const existingPriority =
+                  existing.priority ??
+                  "normal";
+
+                const requestedPriority =
+                  request.body.priority ??
+                  "normal";
+
+                const expectedProviderId =
+                  mode === "text_to_video"
+                    ? textToVideoProviderId
+                    : "higgsfield";
+
+                const sameRequest =
+                  existing.providerId === expectedProviderId &&
+                  existingMode === requestedMode &&
+                  existing.providerModelId === providerModelId &&
+                  existing.prompt === request.body.prompt &&
+                  existingImageInput === requestedImageInput &&
+                  existingDuration === requestedDuration &&
+                  existingEnhancePrompt === requestedEnhancePrompt &&
+                  sameSeed &&
+                  existingPriority === requestedPriority;
+
+if (!sameRequest) {
+  throw new GenerationRepositoryError(
+    "Generation request idempotency key was already used with a different payload",
+    "IDEMPOTENCY_CONFLICT",
+  );
+}
+
+return {
+  job: existing,
+  replayed: true,
+};              }              if (                request.body.organizationId              ) {                const accessResult =                  await tx                    .select({                      organizationId:                        organizations.id,                      ownerUserId:                        organizations.ownerUserId,                      membershipUserId:                        organizationMemberships.userId,                    })                    .from(organizations)                    .leftJoin(                      organizationMemberships,                      and(                        eq(                          organizationMemberships.organizationId,                          organizations.id,                        ),                        eq(                          organizationMemberships.userId,                          actor.userId,                        ),                      ),                    )                    .where(                      eq(                        organizations.id,                        request.body.organizationId,                      ),                    )                    .limit(1);                const access =                  accessResult[0];                if (                  !access ||                  (                    access.ownerUserId !==                      actor.userId &&                    access.membershipUserId !==                      actor.userId                  )                ) {                  throw new GenerationRepositoryError(                    "Generation request belongs to a different owner",                    "IDEMPOTENCY_CONFLICT",                  );                }              }              const hasImageAsset =
   typeof request.body.imageAssetId === "string" &&
   request.body.imageAssetId.length > 0;
 
