@@ -9,7 +9,7 @@
         "build": "tsc -p tsconfig.json",
         "start": "node dist/index.js",
         "typecheck": "tsc -p tsconfig.json --noEmit",
-        "test": "node --env-file=../../.env --import tsx --test src/**/*.test.ts"
+        "test": "node --env-file=../../.env --import tsx --test --test-concurrency=1 src/**/*.test.ts"
     },
     "dependencies": {
         "@ak-vision-ai/ai-core": "file:../../packages/ai-core",
