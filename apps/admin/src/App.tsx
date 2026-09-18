@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Activity,
   AlertTriangle,
   CheckCircle2,
   ChevronRight,
+  Eye,
+  Filter,
   CircleDollarSign,
   Gauge,
   LayoutDashboard,
@@ -20,6 +22,8 @@ import {
 import {
   createUser,
   deleteUser,
+  getAdminGeneration,
+  getAdminGenerations,
   getCurrentUser,
   getDbHealth,
   getHealth,
@@ -28,6 +32,9 @@ import {
   logout,
   updateUser,
   type AccountType,
+  type AdminGeneration,
+  type AdminGenerationDetail,
+  type GenerationStatus,
   type AuthUser,
   type ManagedUser,
   type UserRole,
@@ -39,7 +46,7 @@ type Section = "dashboard" | "users" | "generations" | "credits" | "providers" |
 const sections: Array<{ id: Section; label: string; icon: typeof LayoutDashboard; live?: boolean }> = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, live: true },
   { id: "users", label: "Users", icon: Users, live: true },
-  { id: "generations", label: "Generations", icon: Activity },
+  { id: "generations", label: "Generations", icon: Activity, live: true },
   { id: "credits", label: "Credits & Billing", icon: CircleDollarSign },
   { id: "providers", label: "Providers", icon: Gauge },
   { id: "audit", label: "Audit Logs", icon: ShieldCheck },
@@ -82,6 +89,18 @@ export default function App() {
   const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
   const [health, setHealth] = useState<{ api: boolean; db: boolean }>({ api: false, db: false });
+  const [generations, setGenerations] = useState<AdminGeneration[]>([]);
+  const [generationsLoading, setGenerationsLoading] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
+  const [generationPage, setGenerationPage] = useState(1);
+  const [generationPageSize] = useState(20);
+  const [generationStatus, setGenerationStatus] = useState<GenerationStatus | "">("");
+  const [generationSearchInput, setGenerationSearchInput] = useState("");
+  const [generationSearch, setGenerationSearch] = useState("");
+  const [generationMeta, setGenerationMeta] = useState({ page: 1, pageSize: 20, total: 0, totalPages: 1 });
+  const [selectedGeneration, setSelectedGeneration] = useState<AdminGenerationDetail | null>(null);
+  const [generationDetailLoading, setGenerationDetailLoading] = useState(false);
+  const [generationDetailError, setGenerationDetailError] = useState<string | null>(null);
 
   const refreshUsers = useCallback(async () => {
     setUsersLoading(true);
@@ -95,6 +114,25 @@ export default function App() {
       setUsersLoading(false);
     }
   }, []);
+
+  const refreshGenerations = useCallback(async () => {
+    setGenerationsLoading(true);
+    setGenerationError(null);
+    try {
+      const response = await getAdminGenerations({
+        page: generationPage,
+        pageSize: generationPageSize,
+        status: generationStatus,
+        search: generationSearch,
+      });
+      setGenerations(response.data);
+      setGenerationMeta(response.meta);
+    } catch (error) {
+      setGenerationError(error instanceof Error ? error.message : "Could not load generations.");
+    } finally {
+      setGenerationsLoading(false);
+    }
+  }, [generationPage, generationPageSize, generationStatus, generationSearch]);
 
   const refreshHealth = useCallback(async () => {
     const [api, db] = await Promise.allSettled([getHealth(), getDbHealth()]);
@@ -120,6 +158,32 @@ export default function App() {
     return () => { mounted = false; };
   }, [refreshHealth, refreshUsers]);
 
+  useEffect(() => {
+    if (!authUser || !["admin", "super_admin"].includes(authUser.role) || section !== "generations") return;
+    void refreshGenerations();
+  }, [authUser, section, refreshGenerations]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setGenerationPage(1);
+      setGenerationSearch(generationSearchInput.trim());
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [generationSearchInput]);
+
+  async function openGeneration(jobId: string) {
+    setGenerationDetailLoading(true);
+    setGenerationDetailError(null);
+    try {
+      const response = await getAdminGeneration(jobId);
+      setSelectedGeneration(response.data);
+    } catch (error) {
+      setGenerationDetailError(error instanceof Error ? error.message : "Could not load generation details.");
+    } finally {
+      setGenerationDetailLoading(false);
+    }
+  }
+
   async function handleLogin() {
     if (!email.trim() || !password) { setAuthError("Enter your admin email and password."); return; }
     setSubmitting(true);
@@ -143,6 +207,8 @@ export default function App() {
     await logout().catch(() => undefined);
     setAuthUser(null);
     setUsers([]);
+    setGenerations([]);
+    setSelectedGeneration(null);
     setSection("dashboard");
   }
 
@@ -211,16 +277,45 @@ export default function App() {
 
         <main className="min-w-0 flex-1">
           <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-[#090b10]/85 backdrop-blur-xl">
-            <div className="flex h-16 items-center gap-3 px-5 lg:px-8"><button type="button" className="rounded-xl p-2 text-white/50 lg:hidden" onClick={() => setMobileOpen(true)}><Menu size={20} /></button><div className="min-w-0 flex-1"><div className="text-xs text-white/30">AK Vision AI / {sections.find((item) => item.id === section)?.label}</div></div><button type="button" onClick={() => { void refreshHealth(); if (section === "users") void refreshUsers(); }} className="inline-flex items-center gap-2 rounded-xl border border-white/[0.07] px-3 py-2 text-xs text-white/55 hover:bg-white/[0.04]"><RefreshCcw size={13} /> Refresh</button></div>
+            <div className="flex h-16 items-center gap-3 px-5 lg:px-8"><button type="button" className="rounded-xl p-2 text-white/50 lg:hidden" onClick={() => setMobileOpen(true)}><Menu size={20} /></button><div className="min-w-0 flex-1"><div className="text-xs text-white/30">AK Vision AI / {sections.find((item) => item.id === section)?.label}</div></div><button type="button" onClick={() => { void refreshHealth(); if (section === "users") void refreshUsers(); if (section === "generations") void refreshGenerations(); }} className="inline-flex items-center gap-2 rounded-xl border border-white/[0.07] px-3 py-2 text-xs text-white/55 hover:bg-white/[0.04]"><RefreshCcw size={13} /> Refresh</button></div>
           </header>
 
           <div className="mx-auto max-w-[1480px] p-5 lg:p-8">
             {section === "dashboard" && <DashboardView users={users} customerCount={customerCount} activeCount={activeCount} suspendedCount={suspendedCount} adminCount={adminCount} health={health} />}
             {section === "users" && <UsersView authUser={authUser} users={filteredUsers} totalUsers={users.length} search={search} setSearch={setSearch} loading={usersLoading} error={pageError} onCreate={() => { setEditingUser(null); setModal("create"); }} onEdit={(user) => { setEditingUser(user); setModal("edit"); }} onToggle={handleToggleStatus} onDelete={handleDelete} />}
-            {!(["dashboard", "users"] as Section[]).includes(section) && <ComingSoon title={sections.find((item) => item.id === section)?.label ?? "Module"} />}
+            {section === "generations" && (
+  <GenerationsView
+    generations={generations}
+    loading={generationsLoading}
+    error={generationError}
+    page={generationMeta.page}
+    totalPages={generationMeta.totalPages}
+    total={generationMeta.total}
+    search={generationSearchInput}
+    status={generationStatus}
+    setSearch={setGenerationSearchInput}
+    setStatus={setGenerationStatus}
+    onPrev={() => setGenerationPage((value) => Math.max(1, value - 1))}
+    onNext={() => setGenerationPage((value) => Math.min(generationMeta.totalPages, value + 1))}
+    onOpen={(jobId) => void openGeneration(jobId)}
+  />
+)}
+{!(["dashboard", "users", "generations"] as Section[]).includes(section) && <ComingSoon title={sections.find((item) => item.id === section)?.label ?? "Module"} />}
           </div>
         </main>
       </div>
+
+      {selectedGeneration && (
+        <GenerationDetailDrawer
+          generation={selectedGeneration}
+          loading={generationDetailLoading}
+          error={generationDetailError}
+          onClose={() => {
+            setSelectedGeneration(null);
+            setGenerationDetailError(null);
+          }}
+        />
+      )}
 
       {modal && <UserModal mode={modal} actorRole={authUser.role} user={editingUser} onClose={() => setModal(null)} onSaved={(user) => { setUsers((items) => modal === "create" ? [user, ...items] : items.map((item) => item.id === user.id ? user : item)); setModal(null); }} />}
     </div>
@@ -246,7 +341,167 @@ function HealthRow({ label, ok }: { label: string; ok: boolean }) {
 }
 
 function UsersView({ authUser, users, totalUsers, search, setSearch, loading, error, onCreate, onEdit, onToggle, onDelete }: { authUser: AuthUser; users: ManagedUser[]; totalUsers: number; search: string; setSearch: (v: string) => void; loading: boolean; error: string | null; onCreate: () => void; onEdit: (u: ManagedUser) => void; onToggle: (u: ManagedUser) => void; onDelete: (u: ManagedUser) => void }) {
-  return <div><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><div className="text-[11px] uppercase tracking-[0.2em] text-white/30">Identity & access</div><h1 className="mt-2 text-4xl font-semibold tracking-[-0.04em]">Users</h1><p className="mt-2 text-sm text-white/35">Manage customer and privileged accounts through the existing role-protected API.</p></div><button type="button" onClick={onCreate} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-black"><Plus size={16} /> Create user</button></div><div className="mt-7 rounded-3xl border border-white/[0.08] bg-white/[0.035] p-4"><div className="flex flex-col gap-3 lg:flex-row lg:items-center"><div className="relative flex-1"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25" /><input value={search} onChange={(e) => setSearch(e.target.value)} className="w-full rounded-2xl border border-white/[0.07] bg-black/15 py-3 pl-10 pr-4 text-sm outline-none" placeholder={`Search ${totalUsers} users…`} /></div><div className="text-xs text-white/30">Showing {users.length} / {totalUsers}</div></div></div>{error && <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-200">{error}</div>}<div className="mt-5 overflow-hidden rounded-3xl border border-white/[0.08] bg-white/[0.025]"><div className="overflow-x-auto"><table className="min-w-[920px] w-full text-left"><thead className="border-b border-white/[0.07] bg-white/[0.02] text-[10px] uppercase tracking-[0.18em] text-white/25"><tr><th className="px-5 py-4">User</th><th className="px-5 py-4">Role</th><th className="px-5 py-4">Status</th><th className="px-5 py-4">Account</th><th className="px-5 py-4">Created</th><th className="px-5 py-4 text-right">Actions</th></tr></thead><tbody className="divide-y divide-white/[0.06]">{loading ? <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-white/30">Loading users…</td></tr> : users.length === 0 ? <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-white/30">No users match this search.</td></tr> : users.map((user) => <tr key={user.id} className="hover:bg-white/[0.02]"><td className="px-5 py-4"><div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-full bg-white/[0.08] text-xs font-semibold">{initials(user.displayName, user.email)}</div><div className="min-w-0"><div className="truncate text-sm font-medium">{user.displayName}</div><div className="truncate text-xs text-white/30">{user.email}</div></div></div></td><td className="px-5 py-4 text-sm text-white/60">{roleLabel(user.role)}</td><td className="px-5 py-4"><span className={["inline-flex rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider", statusClass(user.status)].join(" ")}>{user.status}</span></td><td className="px-5 py-4 text-xs uppercase tracking-wider text-white/35">{user.accountType}</td><td className="px-5 py-4 text-xs text-white/35">{formatDate(user.createdAt)}</td><td className="px-5 py-4"><div className="flex justify-end gap-2"><button type="button" onClick={() => onEdit(user)} className="rounded-xl border border-white/[0.08] px-3 py-2 text-xs text-white/55 hover:bg-white/[0.04]">Edit</button><button type="button" disabled={user.role === "super_admin" && user.id !== authUser.id} onClick={() => void onToggle(user)} className="rounded-xl border border-white/[0.08] px-3 py-2 text-xs text-white/55 hover:bg-white/[0.04] disabled:opacity-25">{user.status === "suspended" ? "Activate" : "Suspend"}</button><button type="button" disabled={user.role === "super_admin"} onClick={() => void onDelete(user)} className="rounded-xl border border-red-400/15 px-3 py-2 text-xs text-red-200/70 hover:bg-red-400/5 disabled:opacity-25">Delete</button></div></td></tr>)}</tbody></table></div></div></div>;
+  return <div><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><div className="text-[11px] uppercase tracking-[0.2em] text-white/30">Identity & access</div><h1 className="mt-2 text-4xl font-semibold tracking-[-0.04em]">Users</h1><p className="mt-2 text-sm text-white/35">Manage customer and privileged accounts through the existing role-protected API.</p></div><button type="button" onClick={onCreate} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-black"><Plus size={16} /> Create user</button></div><div className="mt-7 rounded-3xl border border-white/[0.08] bg-white/[0.035] p-4"><div className="flex flex-col gap-3 lg:flex-row lg:items-center"><div className="relative flex-1"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25" /><input value={search} onChange={(e) => setSearch(e.target.value)} className="w-full rounded-2xl border border-white/[0.07] bg-black/15 py-3 pl-10 pr-4 text-sm outline-none" placeholder={`Search ${totalUsers} users…`} /></div><div className="text-xs text-white/30">Showing {users.length} / {totalUsers}</div></div></div>{error && <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-200">{error}</div>}<div className="mt-5 overflow-hidden rounded-3xl border border-white/[0.08] bg-white/[0.025]"><div className="overflow-x-auto"><table className="min-w-[920px] w-full text-left"><thead className="border-b border-white/[0.07] bg-white/[0.02] text-[10px] uppercase tracking-[0.18em] text-white/25"><tr><th className="px-5 py-4">User</th><th className="px-5 py-4">Role</th><th className="px-5 py-4">Status</th><th className="px-5 py-4">Account</th><th className="px-5 py-4">Created</th><th className="px-5 py-4 text-right">Actions</th></tr></thead><tbody className="divide-y divide-white/[0.06]">{loading ? <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-white/30">Loading users…</td></tr> : users.length === 0 ? <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-white/30">No users match this search.</td></tr> : users.map((user) => <tr key={user.id} tabIndex={0} role="button" title="Click to open user" onClick={() => onEdit(user)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onEdit(user); } }} className="cursor-pointer hover:bg-white/[0.04] focus:bg-white/[0.05] focus:outline-none"><td className="px-5 py-4"><div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-full bg-white/[0.08] text-xs font-semibold">{initials(user.displayName, user.email)}</div><div className="min-w-0"><div className="truncate text-sm font-medium">{user.displayName}</div><div className="truncate text-xs text-white/30">{user.email}</div></div></div></td><td className="px-5 py-4 text-sm text-white/60">{roleLabel(user.role)}</td><td className="px-5 py-4"><span className={["inline-flex rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider", statusClass(user.status)].join(" ")}>{user.status}</span></td><td className="px-5 py-4 text-xs uppercase tracking-wider text-white/35">{user.accountType}</td><td className="px-5 py-4 text-xs text-white/35">{formatDate(user.createdAt)}</td><td className="px-5 py-4"><div className="flex justify-end gap-2"><button type="button" onClick={(event) => { event.stopPropagation(); onEdit(user); }} className="rounded-xl border border-white/[0.08] px-3 py-2 text-xs text-white/55 hover:bg-white/[0.04]">Edit</button><button type="button" disabled={user.role === "super_admin" && user.id !== authUser.id} onClick={(event) => { event.stopPropagation(); void onToggle(user); }} className="rounded-xl border border-white/[0.08] px-3 py-2 text-xs text-white/55 hover:bg-white/[0.04] disabled:opacity-25">{user.status === "suspended" ? "Activate" : "Suspend"}</button><button type="button" disabled={user.role === "super_admin"} onClick={(event) => { event.stopPropagation(); void onDelete(user); }} className="rounded-xl border border-red-400/15 px-3 py-2 text-xs text-red-200/70 hover:bg-red-400/5 disabled:opacity-25">Delete</button></div></td></tr>)}</tbody></table></div></div></div>;
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function generationStatusClass(status: GenerationStatus) {
+  if (status === "completed") return "border-emerald-400/20 bg-emerald-400/10 text-emerald-200";
+  if (status === "failed") return "border-red-400/20 bg-red-400/10 text-red-200";
+  if (status === "cancelled") return "border-amber-300/20 bg-amber-300/10 text-amber-100";
+  if (status === "processing") return "border-sky-400/20 bg-sky-400/10 text-sky-200";
+  return "border-white/[0.10] bg-white/[0.04] text-white/60";
+}
+
+function formatBytes(value: number | null | undefined) {
+  if (!value || value < 1) return "—";
+  if (value < 1024) return String(value) + " B";
+  if (value < 1024 * 1024) return (value / 1024).toFixed(1) + " KB";
+  if (value < 1024 * 1024 * 1024) return (value / (1024 * 1024)).toFixed(1) + " MB";
+  return (value / (1024 * 1024 * 1024)).toFixed(1) + " GB";
+}
+
+function GenerationsView(props: {
+  generations: AdminGeneration[];
+  loading: boolean;
+  error: string | null;
+  page: number;
+  totalPages: number;
+  total: number;
+  search: string;
+  status: GenerationStatus | "";
+  setSearch: (value: string) => void;
+  setStatus: (value: GenerationStatus | "") => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onOpen: (jobId: string) => void;
+}) {
+  const { generations, loading, error, page, totalPages, total, search, status, setSearch, setStatus, onPrev, onNext, onOpen } = props;
+  return (
+    <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.2em] text-white/30">Generation operations</div>
+          <h1 className="mt-2 text-4xl font-semibold tracking-[-0.04em]">Generations</h1>
+          <p className="mt-2 text-sm text-white/35">Live generation jobs from the database. Operational metadata only.</p>
+        </div>
+        <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] px-4 py-3 text-xs text-white/40">
+          {total.toLocaleString("en-IN")} jobs
+        </div>
+      </div>
+
+      <div className="mt-7 rounded-3xl border border-white/[0.08] bg-white/[0.035] p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} className="w-full rounded-2xl border border-white/[0.07] bg-black/15 py-3 pl-10 pr-4 text-sm outline-none" placeholder="Search customer, provider, model, job ID or request ID…" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Filter size={15} className="text-white/25" />
+            <select value={status} onChange={(event) => setStatus(event.target.value as GenerationStatus | "")} className="rounded-2xl border border-white/[0.07] bg-black/20 px-4 py-3 text-sm outline-none">
+              <option value="">All statuses</option>
+              <option value="queued">Queued</option>
+              <option value="processing">Processing</option>
+              <option value="completed">Completed</option>
+              <option value="failed">Failed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {error && <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-200">{error}</div>}
+
+      <div className="mt-5 overflow-hidden rounded-3xl border border-white/[0.08] bg-white/[0.025]">
+        <div className="overflow-x-auto">
+          <table className="min-w-[1180px] w-full text-left">
+            <thead className="border-b border-white/[0.07] bg-white/[0.02] text-[10px] uppercase tracking-[0.18em] text-white/25">
+              <tr><th className="px-5 py-4">Customer</th><th className="px-5 py-4">Generation</th><th className="px-5 py-4">Mode</th><th className="px-5 py-4">Provider / Model</th><th className="px-5 py-4">Status</th><th className="px-5 py-4">Created</th><th className="px-5 py-4 text-right">View</th></tr>
+            </thead>
+            <tbody className="divide-y divide-white/[0.06]">
+              {loading ? (
+                <tr><td colSpan={7} className="px-5 py-12 text-center text-sm text-white/30">Loading generations…</td></tr>
+              ) : generations.length === 0 ? (
+                <tr><td colSpan={7} className="px-5 py-12 text-center text-sm text-white/30">No generation jobs match the current filters.</td></tr>
+              ) : generations.map((generation) => (
+                <tr key={generation.id} tabIndex={0} role="button" title="Click to open generation" onClick={() => onOpen(generation.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(generation.id); } }} className="cursor-pointer hover:bg-white/[0.04] focus:bg-white/[0.05] focus:outline-none">
+                  <td className="px-5 py-4"><div className="max-w-[230px]"><div className="truncate text-sm font-medium">{generation.customer.displayName}</div><div className="truncate text-xs text-white/30">{generation.customer.email}</div></div></td>
+                  <td className="px-5 py-4"><div className="text-xs font-medium text-white/65">{generation.type}</div><div className="mt-1 max-w-[260px] truncate text-[11px] text-white/30">{generation.prompt || "No prompt"}</div><div className="mt-1 font-mono text-[10px] text-white/20">{generation.id.slice(0, 12)}…</div></td>
+                  <td className="px-5 py-4 text-xs text-white/55">{generation.mode || "—"}</td>
+                  <td className="px-5 py-4"><div className="text-xs text-white/60">{generation.providerId || "—"}</div><div className="mt-1 text-[10px] text-white/25">{generation.providerModelId || "—"}</div></td>
+                  <td className="px-5 py-4"><div className="space-y-2"><span className={["inline-flex rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider", generationStatusClass(generation.status)].join(" ")}>{generation.status}</span><div className="w-28"><div className="h-1.5 overflow-hidden rounded-full bg-white/[0.07]"><div className="h-full rounded-full bg-white/60" style={{ width: Math.max(0, Math.min(100, generation.progress)) + "%" }} /></div><div className="mt-1 text-[9px] text-white/20">{Math.round(generation.progress)}%</div></div></div></td>
+                  <td className="px-5 py-4 text-xs text-white/35">{formatDateTime(generation.createdAt)}</td>
+                  <td className="px-5 py-4 text-right"><button type="button" onClick={(event) => { event.stopPropagation(); onOpen(generation.id); }} className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] px-3 py-2 text-xs text-white/55 hover:bg-white/[0.04] hover:text-white"><Eye size={14} /> View</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex items-center justify-between border-t border-white/[0.07] px-5 py-4">
+          <div className="text-xs text-white/25">Page {page} of {Math.max(1, totalPages)}</div>
+          <div className="flex gap-2"><button type="button" disabled={page <= 1} onClick={onPrev} className="rounded-xl border border-white/[0.08] px-3 py-2 text-xs text-white/50 disabled:opacity-25">Previous</button><button type="button" disabled={page >= totalPages} onClick={onNext} className="rounded-xl border border-white/[0.08] px-3 py-2 text-xs text-white/50 disabled:opacity-25">Next</button></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GenerationDetailDrawer(props: {
+  generation: AdminGenerationDetail;
+  loading: boolean;
+  error: string | null;
+  onClose: () => void;
+}) {
+  const { generation, loading, error, onClose } = props;
+  return (
+    <div className="fixed inset-0 z-[75] bg-black/70 backdrop-blur-sm">
+      <button type="button" aria-label="Close generation details" className="absolute inset-0 h-full w-full cursor-default" onClick={onClose} />
+      <aside className="absolute right-0 top-0 h-full w-full max-w-2xl overflow-y-auto border-l border-white/[0.08] bg-[#10131a] p-6 shadow-[-30px_0_100px_rgba(0,0,0,.45)]">
+        <div className="flex items-center justify-between"><div><div className="text-[11px] uppercase tracking-[0.2em] text-white/25">Generation detail</div><h2 className="mt-2 text-xl font-semibold">{generation.id}</h2></div><button type="button" onClick={onClose} className="rounded-xl p-2 text-white/40 hover:bg-white/[0.04]"><X size={18} /></button></div>
+        {loading && <div className="mt-6 text-sm text-white/30">Loading generation detail…</div>}
+        {error && <div className="mt-6 rounded-2xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-200">{error}</div>}
+        {!loading && !error && <div className="mt-6 space-y-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <InfoBox label="Customer" value={generation.customer.displayName} sub={generation.customer.email} />
+            <InfoBox label="Status" value={generation.status} sub={Math.round(generation.progress) + "% progress"} />
+            <InfoBox label="Mode" value={generation.mode || "—"} sub={generation.type} />
+            <InfoBox label="Provider" value={generation.providerId || "—"} sub={generation.providerModelId || "—"} />
+            <InfoBox label="Credits" value={generation.creditsRequired == null ? "—" : String(generation.creditsRequired)} sub="Required credits" />
+            <InfoBox label="Outputs" value={String(generation.outputs.length)} sub="Stored artifacts" />
+          </div>
+          <DetailCard title="Prompt"><div className="whitespace-pre-wrap text-sm leading-6 text-white/65">{generation.prompt || "No prompt recorded."}</div></DetailCard>
+          <DetailCard title="Request / lifecycle"><div className="grid gap-3 sm:grid-cols-2"><InfoLine label="Request ID" value={generation.requestId} mono /><InfoLine label="Job ID" value={generation.id} mono /><InfoLine label="Created" value={formatDateTime(generation.createdAt)} /><InfoLine label="Updated" value={formatDateTime(generation.updatedAt)} /><InfoLine label="Started" value={formatDateTime(generation.startedAt)} /><InfoLine label="Completed" value={formatDateTime(generation.completedAt)} /></div></DetailCard>
+          {generation.status === "failed" && <DetailCard title="Why this generation failed"><div className="text-sm font-medium text-red-200">{generation.errorCode || "GENERATION_FAILED"}</div>{generation.errorMessage ? <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white/50">{generation.errorMessage}</div> : <div className="mt-2 text-sm leading-6 text-white/35">No detailed failure message was recorded for this job.</div>}</DetailCard>}
+          <DetailCard title="Outputs">{generation.outputs.length === 0 ? <div className="text-sm text-white/30">No output artifact recorded.</div> : <div className="space-y-3">{generation.outputs.map((output) => <div key={output.id} className="rounded-2xl border border-white/[0.07] bg-black/15 p-4"><div className="flex items-center justify-between gap-3"><div><div className="text-sm font-medium text-white/70">{output.type}</div><div className="mt-1 font-mono text-[10px] text-white/25">{output.id}</div></div><div className="text-xs text-white/30">{formatBytes(output.sizeBytes)}</div></div><div className="mt-2 text-[11px] text-white/25">{output.mimeType || "Unknown MIME type"}</div></div>)}</div>}</DetailCard>
+          <DetailCard title="Input summary"><pre className="overflow-x-auto whitespace-pre-wrap text-xs leading-5 text-white/35">{JSON.stringify(generation.inputSummary ?? {}, null, 2)}</pre></DetailCard>
+        </div>}
+      </aside>
+    </div>
+  );
+}
+
+function InfoBox(props: { label: string; value: string; sub?: string }) {
+  return <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="text-[10px] uppercase tracking-[0.16em] text-white/20">{props.label}</div><div className="mt-2 truncate text-sm font-medium text-white/70">{props.value}</div>{props.sub && <div className="mt-1 truncate text-[11px] text-white/25">{props.sub}</div>}</div>;
+}
+
+function InfoLine(props: { label: string; value: string; mono?: boolean }) {
+  return <div><div className="text-[10px] uppercase tracking-[0.16em] text-white/20">{props.label}</div><div className={["mt-1 break-all text-xs text-white/45", props.mono ? "font-mono" : ""].join(" ")}>{props.value}</div></div>;
+}
+
+function DetailCard(props: { title: string; children: ReactNode }) {
+  return <div className="rounded-3xl border border-white/[0.08] bg-white/[0.025] p-5"><div className="mb-4 text-sm font-semibold">{props.title}</div>{props.children}</div>;
 }
 
 function UserModal({ mode, actorRole, user, onClose, onSaved }: { mode: "create" | "edit"; actorRole: string; user: ManagedUser | null; onClose: () => void; onSaved: (user: ManagedUser) => void }) {

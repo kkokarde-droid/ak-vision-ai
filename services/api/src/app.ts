@@ -1,4 +1,4 @@
-﻿import multipart from "@fastify/multipart";
+import multipart from "@fastify/multipart";
 import { generationRoutes } from "./modules/generation/generation.routes.js";
 import { mediaRoutes } from "./modules/media/media.routes.js";
 import Fastify from "fastify";
@@ -11,6 +11,7 @@ import { sql } from "drizzle-orm";
 
 import { registerErrorHandler } from "./common/errors/error-handler.js";
 import { usersRoutes } from "./modules/users/users.routes.js";
+import { adminGenerationRoutes } from "./modules/admin/admin-generation.routes.js";
 import { organizationsRoutes } from "./modules/organizations/organizations.routes.js";
 import { membershipsRoutes } from "./modules/memberships/memberships.routes.js";
 import { projectsRoutes } from "./modules/projects/projects.routes.js";
@@ -104,8 +105,12 @@ export function buildApp() {
 
   app.register(creditsRoutes, {
     prefix: "/api/v1/credits",
-  });  app.register(generationRoutes, {
+  });    app.register(generationRoutes, {
     prefix: "/api/v1/generation",
+  });
+
+  app.register(adminGenerationRoutes, {
+    prefix: "/api/v1/admin/generations",
   });
 
   app.get("/health", async () => {
@@ -146,4 +151,3 @@ export function buildApp() {
 
   return app;
 }
-

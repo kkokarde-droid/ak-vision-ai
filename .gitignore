@@ -56,3 +56,6 @@ services/worker/worker-storage/
 services/worker/worker-media/
 *.backup
 worker-media/
+
+# Local OAuth credential exports
+client_secret*.json

@@ -24,6 +24,49 @@ export type ManagedUser = {
   updatedAt: string;
 };
 
+
+export type GenerationStatus = "queued" | "processing" | "completed" | "failed" | "cancelled";
+
+export type AdminGeneration = {
+  id: string;
+  requestId: string;
+  userId: string;
+  customer: {
+    id: string;
+    email: string;
+    displayName: string;
+  };
+  type: string;
+  status: GenerationStatus;
+  priority: number | null;
+  mode: string | null;
+  providerId: string | null;
+  providerModelId: string | null;
+  progress: number;
+  prompt: string | null;
+  creditsRequired: number | null;
+  outputCount: number;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+};
+
+export type AdminGenerationOutput = {
+  id: string;
+  type: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+};
+
+export type AdminGenerationDetail = AdminGeneration & {
+  inputSummary: Record<string, unknown> | null;
+  outputs: AdminGenerationOutput[];
+  errorCode: string | null;
+  errorMessage: string | null;
+};
 type ErrorResponse = { status: "error"; message?: string };
 const API_BASE = "/api/v1";
 
@@ -104,6 +147,114 @@ export async function deleteUser(id: string) {
   return request<{ status: "ok"; data: ManagedUser }>(`${API_BASE}/users/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
+}
+
+function normalizeAdminGeneration(row: any): AdminGeneration {
+  const customer = row.customer ?? row.user ?? {};
+  return {
+    id: String(row.id ?? row.jobId ?? ""),
+    requestId: String(row.requestId ?? ""),
+    userId: String(row.userId ?? customer.id ?? ""),
+    customer: {
+      id: String(customer.id ?? row.userId ?? ""),
+      email: String(customer.email ?? row.userEmail ?? "—"),
+      displayName: String(customer.displayName ?? row.userDisplayName ?? row.userName ?? "—"),
+    },
+    type: String(row.type ?? "—"),
+    status: String(row.status ?? "queued") as GenerationStatus,
+    priority: row.priority == null ? null : Number(row.priority),
+    mode: row.mode == null ? null : String(row.mode),
+    providerId: row.providerId == null ? null : String(row.providerId),
+    providerModelId: row.providerModelId == null ? null : String(row.providerModelId),
+    progress: Number(row.progress ?? 0),
+    prompt: row.prompt == null ? null : String(row.prompt),
+    creditsRequired: row.creditsRequired == null ? null : Number(row.creditsRequired),
+    outputCount: Number(row.outputCount ?? 0),
+    createdAt: String(row.createdAt ?? new Date().toISOString()),
+    updatedAt: String(row.updatedAt ?? row.createdAt ?? new Date().toISOString()),
+    startedAt: row.startedAt == null ? null : String(row.startedAt),
+    completedAt: row.completedAt == null ? null : String(row.completedAt),
+  };
+}
+
+export async function getAdminGenerations(input: {
+  page?: number;
+  pageSize?: number;
+  status?: GenerationStatus | "";
+  search?: string;
+}) {
+  const params = new URLSearchParams();
+  params.set("page", String(input.page ?? 1));
+  params.set("pageSize", String(input.pageSize ?? 20));
+  if (input.status) params.set("status", input.status);
+  if (input.search?.trim()) params.set("search", input.search.trim());
+
+  const raw = await request<any>(
+    API_BASE + "/admin/generations?" + params.toString()
+  );
+
+  const rows = Array.isArray(raw?.data)
+    ? raw.data
+    : Array.isArray(raw?.data?.items)
+      ? raw.data.items
+      : Array.isArray(raw?.items)
+        ? raw.items
+        : [];
+
+  const metaSource = raw?.meta ?? raw?.data?.meta ?? {};
+  const pageSize = Number(metaSource.pageSize ?? input.pageSize ?? 20);
+  const total = Number(metaSource.total ?? rows.length);
+
+  return {
+    status: "ok" as const,
+    data: rows.map(normalizeAdminGeneration),
+    meta: {
+      page: Number(metaSource.page ?? input.page ?? 1),
+      pageSize,
+      total,
+      totalPages: Number(metaSource.totalPages ?? Math.max(1, Math.ceil(total / pageSize))),
+    },
+  };
+}
+
+export async function getAdminGeneration(jobId: string) {
+  const raw = await request<any>(
+    API_BASE + "/admin/generations/" + encodeURIComponent(jobId)
+  );
+
+  const source = raw?.data?.job
+    ? { ...raw.data.job, ...raw.data }
+    : raw?.data?.generation
+      ? { ...raw.data.generation, ...raw.data }
+      : raw?.data ?? raw;
+
+  const generation = normalizeAdminGeneration(source);
+
+  return {
+    status: "ok" as const,
+    data: {
+      ...generation,
+      inputSummary: source.inputSummary ?? source.input ?? null,
+      outputs: Array.isArray(source.outputs)
+        ? source.outputs.map((output: any) => ({
+            id: String(output.id ?? ""),
+            type: String(output.type ?? "—"),
+            mimeType: output.mimeType == null ? null : String(output.mimeType),
+            sizeBytes: output.sizeBytes == null ? null : Number(output.sizeBytes),
+            metadata: output.metadata ?? null,
+            createdAt: String(output.createdAt ?? new Date().toISOString()),
+          }))
+        : [],
+      errorCode:
+        source.errorCode ??
+        source.error?.code ??
+        null,
+      errorMessage:
+        source.errorMessage ??
+        source.error?.message ??
+        null,
+    } as AdminGenerationDetail,
+  };
 }
 
 export async function getHealth() {
