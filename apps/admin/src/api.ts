@@ -25,6 +25,71 @@ export type ManagedUser = {
 };
 
 
+
+
+export type AdminCreditBalance = {
+  id: string;
+  customer: {
+    id: string;
+    email: string;
+    displayName: string;
+    status: string;
+    accountType: string;
+  };
+  balance: {
+    id: string;
+    availableCredits: number;
+    reservedCredits: number;
+    currency: string;
+    updatedAt: string;
+  } | null;
+  totalCredits: number;
+};
+
+export type AdminCreditTransaction = {
+  id: string;
+  type: string;
+  source: string;
+  amount: number;
+  availableBalanceAfter: number;
+  reservedBalanceAfter: number;
+  referenceId: string | null;
+  description: string | null;
+  createdAt: string;
+};
+
+export type AdminCreditReservation = {
+  id: string;
+  amount: number;
+  status: string;
+  referenceId: string | null;
+  expiresAt: string | null;
+  releasedAt: string | null;
+  consumedAt: string | null;
+  createdAt: string;
+};
+
+export type AdminCreditUsage = {
+  id: string;
+  requestId: string;
+  providerId: string | null;
+  providerModelId: string | null;
+  creditsUsed: number;
+  providerCostMinor: number | null;
+  infrastructureCostMinor: number | null;
+  retryCostMinor: number | null;
+  customerChargeMinor: number | null;
+  platformContributionMinor: number | null;
+  currency: string;
+  createdAt: string;
+};
+
+export type AdminCreditDetail = AdminCreditBalance & {
+  transactions: AdminCreditTransaction[];
+  reservations: AdminCreditReservation[];
+  usage: AdminCreditUsage[];
+};
+
 export type GenerationStatus = "queued" | "processing" | "completed" | "failed" | "cancelled";
 
 export type AdminGeneration = {
@@ -256,6 +321,150 @@ export async function getAdminGeneration(jobId: string) {
     } as AdminGenerationDetail,
   };
 }
+
+
+
+export async function getAdminCredits(input: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+}) {
+  const params = new URLSearchParams();
+  params.set("page", String(input.page ?? 1));
+  params.set("pageSize", String(input.pageSize ?? 20));
+  if (input.search?.trim()) params.set("search", input.search.trim());
+
+  const raw = await request<any>(
+    API_BASE + "/admin/credits?" + params.toString()
+  );
+
+  const rows = Array.isArray(raw?.data) ? raw.data : [];
+  const meta = raw?.meta ?? {};
+
+  return {
+    status: "ok" as const,
+    data: rows.map((row: any) => ({
+      id: String(row.id ?? ""),
+      customer: {
+        id: String(row.customer?.id ?? ""),
+        email: String(row.customer?.email ?? "—"),
+        displayName: String(row.customer?.displayName ?? "—"),
+        status: String(row.customer?.status ?? "—"),
+        accountType: String(row.customer?.accountType ?? "—"),
+      },
+      balance: row.balance
+        ? {
+            id: String(row.balance.id ?? ""),
+            availableCredits: Number(row.balance.availableCredits ?? 0),
+            reservedCredits: Number(row.balance.reservedCredits ?? 0),
+            currency: String(row.balance.currency ?? "INR"),
+            updatedAt: String(row.balance.updatedAt ?? new Date().toISOString()),
+          }
+        : null,
+      totalCredits: Number(row.totalCredits ?? 0),
+    } satisfies AdminCreditBalance)),
+    meta: {
+      page: Number(meta.page ?? input.page ?? 1),
+      pageSize: Number(meta.pageSize ?? input.pageSize ?? 20),
+      total: Number(meta.total ?? rows.length),
+      totalPages: Number(meta.totalPages ?? 1),
+    },
+  };
+}
+
+export async function getAdminCreditDetail(userId: string) {
+  const raw = await request<any>(
+    API_BASE + "/admin/credits/" + encodeURIComponent(userId)
+  );
+  const source = raw?.data ?? raw;
+  return {
+    status: "ok" as const,
+    data: {
+      id: String(source.id ?? ""),
+      customer: {
+        id: String(source.customer?.id ?? ""),
+        email: String(source.customer?.email ?? "—"),
+        displayName: String(source.customer?.displayName ?? "—"),
+        status: String(source.customer?.status ?? "—"),
+        accountType: String(source.customer?.accountType ?? "—"),
+      },
+      balance: source.balance
+        ? {
+            id: String(source.balance.id ?? ""),
+            availableCredits: Number(source.balance.availableCredits ?? 0),
+            reservedCredits: Number(source.balance.reservedCredits ?? 0),
+            currency: String(source.balance.currency ?? "INR"),
+            updatedAt: String(source.balance.updatedAt ?? new Date().toISOString()),
+          }
+        : null,
+      totalCredits: Number(source.totalCredits ?? 0),
+      transactions: Array.isArray(source.transactions)
+        ? source.transactions.map((row: any) => ({
+            id: String(row.id ?? ""),
+            type: String(row.type ?? "—"),
+            source: String(row.source ?? "—"),
+            amount: Number(row.amount ?? 0),
+            availableBalanceAfter: Number(row.availableBalanceAfter ?? 0),
+            reservedBalanceAfter: Number(row.reservedBalanceAfter ?? 0),
+            referenceId: row.referenceId == null ? null : String(row.referenceId),
+            description: row.description == null ? null : String(row.description),
+            createdAt: String(row.createdAt ?? new Date().toISOString()),
+          }))
+        : [],
+      reservations: Array.isArray(source.reservations)
+        ? source.reservations.map((row: any) => ({
+            id: String(row.id ?? ""),
+            amount: Number(row.amount ?? 0),
+            status: String(row.status ?? "—"),
+            referenceId: row.referenceId == null ? null : String(row.referenceId),
+            expiresAt: row.expiresAt == null ? null : String(row.expiresAt),
+            releasedAt: row.releasedAt == null ? null : String(row.releasedAt),
+            consumedAt: row.consumedAt == null ? null : String(row.consumedAt),
+            createdAt: String(row.createdAt ?? new Date().toISOString()),
+          }))
+        : [],
+      usage: Array.isArray(source.usage)
+        ? source.usage.map((row: any) => ({
+            id: String(row.id ?? ""),
+            requestId: String(row.requestId ?? ""),
+            providerId: row.providerId == null ? null : String(row.providerId),
+            providerModelId: row.providerModelId == null ? null : String(row.providerModelId),
+            creditsUsed: Number(row.creditsUsed ?? 0),
+            providerCostMinor: row.providerCostMinor == null ? null : Number(row.providerCostMinor),
+            infrastructureCostMinor: row.infrastructureCostMinor == null ? null : Number(row.infrastructureCostMinor),
+            retryCostMinor: row.retryCostMinor == null ? null : Number(row.retryCostMinor),
+            customerChargeMinor: row.customerChargeMinor == null ? null : Number(row.customerChargeMinor),
+            platformContributionMinor: row.platformContributionMinor == null ? null : Number(row.platformContributionMinor),
+            currency: String(row.currency ?? "INR"),
+            createdAt: String(row.createdAt ?? new Date().toISOString()),
+          }))
+        : [],
+    } as AdminCreditDetail,
+  };
+}
+
+export async function grantAdminCredits(userId: string, input: {
+  amount: number;
+  description?: string;
+  referenceId?: string;
+  idempotencyKey: string;
+}) {
+  return request<{
+    status: "ok";
+    data: {
+      transaction: AdminCreditTransaction;
+      balance: {
+        availableCredits: number;
+        reservedCredits: number;
+        currency: string;
+      };
+    };
+  }>(API_BASE + "/admin/credits/" + encodeURIComponent(userId) + "/grant", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 
 export async function getHealth() {
   const response = await fetch("/health", { credentials: "include" });

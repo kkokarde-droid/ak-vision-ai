@@ -12,6 +12,7 @@ import { sql } from "drizzle-orm";
 import { registerErrorHandler } from "./common/errors/error-handler.js";
 import { usersRoutes } from "./modules/users/users.routes.js";
 import { adminGenerationRoutes } from "./modules/admin/admin-generation.routes.js";
+import { adminCreditsRoutes } from "./modules/admin/admin-credits.routes.js";
 import { organizationsRoutes } from "./modules/organizations/organizations.routes.js";
 import { membershipsRoutes } from "./modules/memberships/memberships.routes.js";
 import { projectsRoutes } from "./modules/projects/projects.routes.js";
@@ -111,6 +112,10 @@ export function buildApp() {
 
   app.register(adminGenerationRoutes, {
     prefix: "/api/v1/admin/generations",
+  });
+
+  app.register(adminCreditsRoutes, {
+    prefix: "/api/v1/admin/credits",
   });
 
   app.get("/health", async () => {

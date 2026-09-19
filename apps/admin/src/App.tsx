@@ -32,6 +32,8 @@ import {
   logout,
   updateUser,
   type AccountType,
+  type AdminCreditBalance,
+  type AdminCreditDetail,
   type AdminGeneration,
   type AdminGenerationDetail,
   type GenerationStatus,
@@ -47,7 +49,7 @@ const sections: Array<{ id: Section; label: string; icon: typeof LayoutDashboard
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, live: true },
   { id: "users", label: "Users", icon: Users, live: true },
   { id: "generations", label: "Generations", icon: Activity, live: true },
-  { id: "credits", label: "Credits & Billing", icon: CircleDollarSign },
+  { id: "credits", label: "Credits & Billing", icon: CircleDollarSign, live: true },
   { id: "providers", label: "Providers", icon: Gauge },
   { id: "audit", label: "Audit Logs", icon: ShieldCheck },
   { id: "settings", label: "Settings", icon: ShieldCheck },
@@ -282,6 +284,7 @@ export default function App() {
 
           <div className="mx-auto max-w-[1480px] p-5 lg:p-8">
             {section === "dashboard" && <DashboardView users={users} customerCount={customerCount} activeCount={activeCount} suspendedCount={suspendedCount} adminCount={adminCount} health={health} />}
+            {section === "credits" && <CreditsView />}
             {section === "users" && <UsersView authUser={authUser} users={filteredUsers} totalUsers={users.length} search={search} setSearch={setSearch} loading={usersLoading} error={pageError} onCreate={() => { setEditingUser(null); setModal("create"); }} onEdit={(user) => { setEditingUser(user); setModal("edit"); }} onToggle={handleToggleStatus} onDelete={handleDelete} />}
             {section === "generations" && (
   <GenerationsView
@@ -457,6 +460,150 @@ function GenerationsView(props: {
     </div>
   );
 }
+
+
+function CreditsView() {
+  const [items, setItems] = useState<AdminCreditBalance[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+  const [meta, setMeta] = useState({ page: 1, pageSize, total: 0, totalPages: 1 });
+  const [selected, setSelected] = useState<AdminCreditDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [grantTarget, setGrantTarget] = useState<AdminCreditDetail | null>(null);
+  const [amount, setAmount] = useState("");
+  const [description, setDescription] = useState("");
+  const [referenceId, setReferenceId] = useState("");
+  const [granting, setGranting] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await getAdminCredits({ page, pageSize, search });
+      setItems(response.data);
+      setMeta(response.meta);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not load credit accounts.");
+    } finally {
+      setLoading(false);
+    }
+  }, [page, pageSize, search]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setPage(1), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  async function openCustomer(userId: string) {
+    setDetailLoading(true);
+    setError(null);
+    try {
+      const response = await getAdminCreditDetail(userId);
+      setSelected(response.data);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Could not load credit details.");
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  function openGrant(detail: AdminCreditDetail) {
+    setGrantTarget(detail);
+    setAmount("");
+    setDescription("");
+    setReferenceId("");
+    setNotice(null);
+  }
+
+  async function submitGrant() {
+    if (!grantTarget) return;
+    const numericAmount = Number(amount);
+    if (!Number.isInteger(numericAmount) || numericAmount <= 0) {
+      setNotice("Enter a positive whole number of credits.");
+      return;
+    }
+
+    setGranting(true);
+    setNotice(null);
+    try {
+      await grantAdminCredits(grantTarget.customer.id, {
+        amount: numericAmount,
+        description: description.trim() || undefined,
+        referenceId: referenceId.trim() || undefined,
+        idempotencyKey: "admin-ui:" + grantTarget.customer.id + ":" + crypto.randomUUID(),
+      });
+      await Promise.all([refresh(), openCustomer(grantTarget.customer.id)]);
+      setGrantTarget(null);
+    } catch (requestError) {
+      setNotice(requestError instanceof Error ? requestError.message : "Credit grant failed.");
+    } finally {
+      setGranting(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.2em] text-white/30">Financial operations</div>
+          <h1 className="mt-2 text-4xl font-semibold tracking-[-0.04em]">Credits & Billing</h1>
+          <p className="mt-2 text-sm text-white/35">Live customer wallets, reservations, usage and immutable credit ledger activity.</p>
+        </div>
+        <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] px-4 py-3 text-xs text-white/40">
+          {meta.total.toLocaleString("en-IN")} customer wallets
+        </div>
+      </div>
+
+      <div className="mt-7 rounded-3xl border border-white/[0.08] bg-white/[0.035] p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} className="w-full rounded-2xl border border-white/[0.07] bg-black/15 py-3 pl-10 pr-4 text-sm outline-none" placeholder="Search customer email or name…" />
+          </div>
+          <button type="button" onClick={() => void refresh()} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/[0.08] px-4 py-3 text-xs text-white/55 hover:bg-white/[0.04]"><RefreshCcw size={14} /> Refresh</button>
+        </div>
+      </div>
+
+      {error && <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-200">{error}</div>}
+
+      <div className="mt-5 overflow-hidden rounded-3xl border border-white/[0.08] bg-white/[0.025]">
+        <div className="overflow-x-auto">
+          <table className="min-w-[1050px] w-full text-left">
+            <thead className="border-b border-white/[0.07] bg-white/[0.02] text-[10px] uppercase tracking-[0.18em] text-white/25">
+              <tr><th className="px-5 py-4">Customer</th><th className="px-5 py-4">Available</th><th className="px-5 py-4">Reserved</th><th className="px-5 py-4">Total</th><th className="px-5 py-4">Updated</th><th className="px-5 py-4 text-right">View</th></tr>
+            </thead>
+            <tbody className="divide-y divide-white/[0.06]">
+              {loading ? <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-white/30">Loading credit accounts…</td></tr> :
+              items.length === 0 ? <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-white/30">No customer credit accounts found.</td></tr> :
+              items.map((item) => (
+                <tr key={item.id} tabIndex={0} role="button" onClick={() => void openCustomer(item.customer.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); void openCustomer(item.customer.id); } }} className="cursor-pointer hover:bg-white/[0.04] focus:bg-white/[0.05] focus:outline-none">
+                  <td className="px-5 py-4"><div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-full bg-white/[0.08] text-xs font-semibold">{initials(item.customer.displayName, item.customer.email)}</div><div><div className="text-sm font-medium">{item.customer.displayName}</div><div className="text-xs text-white/30">{item.customer.email}</div></div></div></td>
+                  <td className="px-5 py-4 text-sm font-semibold">{item.balance?.availableCredits ?? 0}</td>
+                  <td className="px-5 py-4 text-sm text-amber-100/75">{item.balance?.reservedCredits ?? 0}</td>
+                  <td className="px-5 py-4 text-sm text-white/65">{item.totalCredits}</td>
+                  <td className="px-5 py-4 text-xs text-white/35">{item.balance ? formatDateTime(item.balance.updatedAt) : "Never"}</td>
+                  <td className="px-5 py-4 text-right"><button type="button" onClick={(event) => { event.stopPropagation(); void openCustomer(item.customer.id); }} className="rounded-xl border border-white/[0.08] px-3 py-2 text-xs text-white/55 hover:bg-white/[0.04]">Open</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="flex items-center justify-between border-t border-white/[0.07] px-5 py-4"><div className="text-xs text-white/25">Page {page} of {Math.max(1, meta.totalPages)}</div><div className="flex gap-2"><button type="button" disabled={page <= 1} onClick={() => setPage((value) => value - 1)} className="rounded-xl border border-white/[0.08] px-3 py-2 text-xs text-white/50 disabled:opacity-25">Previous</button><button type="button" disabled={page >= meta.totalPages} onClick={() => setPage((value) => value + 1)} className="rounded-xl border border-white/[0.08] px-3 py-2 text-xs text-white/50 disabled:opacity-25">Next</button></div></div>
+      </div>
+
+      {selected && <div className="fixed inset-0 z-[75] bg-black/70 backdrop-blur-sm"><button type="button" aria-label="Close credit details" className="absolute inset-0 h-full w-full cursor-default" onClick={() => setSelected(null)} /><aside className="absolute right-0 top-0 h-full w-full max-w-2xl overflow-y-auto border-l border-white/[0.08] bg-[#10131a] p-6 shadow-[-30px_0_100px_rgba(0,0,0,.45)]"><div className="flex items-center justify-between"><div><div className="text-[11px] uppercase tracking-[0.2em] text-white/25">Customer wallet</div><h2 className="mt-2 text-xl font-semibold">{selected.customer.displayName}</h2><div className="mt-1 text-xs text-white/30">{selected.customer.email}</div></div><button type="button" onClick={() => setSelected(null)} className="rounded-xl p-2 text-white/40 hover:bg-white/[0.04]"><X size={18} /></button></div>{detailLoading ? <div className="mt-6 text-sm text-white/30">Loading wallet details…</div> : <div className="mt-6 space-y-5"><div className="grid gap-3 sm:grid-cols-3"><InfoBox label="Available" value={String(selected.balance?.availableCredits ?? 0)} sub={selected.balance?.currency ?? "INR"} /><InfoBox label="Reserved" value={String(selected.balance?.reservedCredits ?? 0)} sub="Currently held" /><InfoBox label="Total" value={String(selected.totalCredits)} sub="Available + reserved" /></div><div className="flex gap-3"><button type="button" onClick={() => openGrant(selected)} className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-black"><Plus size={15} /> Grant credits</button><button type="button" onClick={() => void openCustomer(selected.customer.id)} className="inline-flex items-center gap-2 rounded-2xl border border-white/[0.08] px-4 py-3 text-sm text-white/55"><RefreshCcw size={14} /> Refresh</button></div><DetailCard title="Credit ledger">{selected.transactions.length === 0 ? <div className="text-sm text-white/30">No ledger transactions.</div> : <div className="space-y-2">{selected.transactions.map((row) => <div key={row.id} className="rounded-2xl border border-white/[0.07] bg-black/15 p-4"><div className="flex items-center justify-between gap-3"><div><div className="text-sm font-medium text-white/70">{row.type} · {row.source}</div><div className="mt-1 text-xs text-white/35">{row.description || "No description"}</div></div><div className="text-sm font-semibold">+{row.amount}</div></div><div className="mt-2 flex flex-wrap gap-4 text-[10px] text-white/20"><span>Available {row.availableBalanceAfter}</span><span>Reserved {row.reservedBalanceAfter}</span><span>{formatDateTime(row.createdAt)}</span></div></div>)}</div>}</DetailCard><DetailCard title="Reservations">{selected.reservations.length === 0 ? <div className="text-sm text-white/30">No reservations.</div> : <div className="space-y-2">{selected.reservations.slice(0, 10).map((row) => <div key={row.id} className="flex items-center justify-between rounded-2xl border border-white/[0.07] bg-black/15 p-4"><div><div className="text-sm font-medium text-white/70">{row.status}</div><div className="mt-1 text-[10px] text-white/25">{row.referenceId || "No reference"}</div></div><div className="text-sm text-amber-100/75">{row.amount}</div></div>)}</div>}</DetailCard><DetailCard title="Usage">{selected.usage.length === 0 ? <div className="text-sm text-white/30">No usage records.</div> : <div className="overflow-x-auto"><table className="min-w-[720px] w-full text-left"><thead className="text-[10px] uppercase tracking-[0.16em] text-white/20"><tr><th className="pb-3">Provider</th><th className="pb-3">Model</th><th className="pb-3">Credits</th><th className="pb-3">Customer charge</th><th className="pb-3">Date</th></tr></thead><tbody>{selected.usage.map((row) => <tr key={row.id} className="border-t border-white/[0.05]"><td className="py-3 text-xs text-white/55">{row.providerId || "—"}</td><td className="py-3 text-xs text-white/35">{row.providerModelId || "—"}</td><td className="py-3 text-xs">{row.creditsUsed}</td><td className="py-3 text-xs text-white/55">{row.customerChargeMinor == null ? "—" : row.currency + " " + (row.customerChargeMinor / 100).toFixed(2)}</td><td className="py-3 text-xs text-white/25">{formatDateTime(row.createdAt)}</td></tr>)}</tbody></table></div>}</DetailCard></div>}</aside></div>}
+
+      {grantTarget && <div className="fixed inset-0 z-[80] grid place-items-center bg-black/70 p-5 backdrop-blur-sm"><div className="w-full max-w-lg rounded-[30px] border border-white/[0.09] bg-[#10131a] p-6 shadow-[0_40px_120px_rgba(0,0,0,.55)]"><div className="flex items-center justify-between"><div><div className="text-lg font-semibold">Grant credits</div><div className="mt-1 text-xs text-white/30">{grantTarget.customer.email}</div></div><button type="button" onClick={() => setGrantTarget(null)} className="rounded-xl p-2 text-white/40 hover:bg-white/[0.04]"><X size={18} /></button></div><div className="mt-6 space-y-4"><label className="block"><span className="mb-2 block text-xs text-white/40">Amount</span><input value={amount} onChange={(event) => setAmount(event.target.value)} inputMode="numeric" className="w-full rounded-2xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none" placeholder="e.g. 500" /></label><label className="block"><span className="mb-2 block text-xs text-white/40">Description</span><input value={description} onChange={(event) => setDescription(event.target.value)} className="w-full rounded-2xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none" placeholder="Support compensation" /></label><label className="block"><span className="mb-2 block text-xs text-white/40">Reference (optional)</span><input value={referenceId} onChange={(event) => setReferenceId(event.target.value)} className="w-full rounded-2xl border border-white/[0.08] bg-black/20 px-4 py-3 text-sm outline-none" placeholder="SUPPORT-001" /></label></div>{notice && <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm text-red-200">{notice}</div>}<div className="mt-6 flex justify-end gap-3"><button type="button" onClick={() => setGrantTarget(null)} className="rounded-2xl border border-white/[0.08] px-4 py-3 text-sm text-white/55">Cancel</button><button type="button" disabled={granting} onClick={() => void submitGrant()} className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-black disabled:opacity-40">{granting ? "Granting…" : "Grant credits"}</button></div></div></div>}
+    </div>
+  );
+}
+
 
 function GenerationDetailDrawer(props: {
   generation: AdminGenerationDetail;
