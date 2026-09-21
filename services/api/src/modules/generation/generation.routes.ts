@@ -265,21 +265,15 @@ const requestedDuration =
                   request.body.priority ??
                   "normal";
 
-                const expectedProviderId =
-                  mode === "text_to_video"
-                    ? textToVideoProviderId
-                    : "higgsfield";
-
                 const sameRequest =
-                  existing.providerId === expectedProviderId &&
-                  existingMode === requestedMode &&
-                  existing.providerModelId === providerModelId &&
-                  existing.prompt === request.body.prompt &&
-                  existingImageInput === requestedImageInput &&
-                  existingDuration === requestedDuration &&
-                  existingEnhancePrompt === requestedEnhancePrompt &&
-                  sameSeed &&
-                  existingPriority === requestedPriority;
+  existingMode === requestedMode &&
+  existing.providerModelId === providerModelId &&
+  existing.prompt === request.body.prompt &&
+  existingImageInput === requestedImageInput &&
+  existingDuration === requestedDuration &&
+  existingEnhancePrompt === requestedEnhancePrompt &&
+  sameSeed &&
+  existingPriority === requestedPriority;
 
 if (!sameRequest) {
   throw new GenerationRepositoryError(
