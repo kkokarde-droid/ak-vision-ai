@@ -13,6 +13,11 @@ import {
   registerUser,
 } from "./auth.service.js";
 
+import {
+  requestPasswordReset,
+  resetPassword,
+} from "./password-reset.service.js";
+
 const SESSION_COOKIE =
   "ak_vision_session";
 
@@ -101,6 +106,91 @@ export async function authRoutes(
             status: "error",
             message,
           });
+      }
+    },
+  );
+
+  /*
+   * FORGOT PASSWORD
+   *
+   * The response is intentionally identical for known and unknown
+   * email addresses to avoid account enumeration.
+   */
+  app.post<{
+    Body: { email: string };
+  }>(
+    "/forgot-password",
+    async (request, reply) => {
+      try {
+        await requestPasswordReset(request.body.email);
+        return reply.code(200).send({
+          status: "ok",
+          message:
+            "If an account exists for that email, a password reset link has been sent.",
+        });
+      } catch (error) {
+        app.log.error(error);
+        return reply.code(503).send({
+          status: "error",
+          message:
+            "Password reset is temporarily unavailable. Please try again later.",
+        });
+      }
+    },
+  );
+
+  /*
+   * RESET PASSWORD
+   */
+  app.post<{
+    Body: {
+      token: string;
+      newPassword: string;
+    };
+  }>(
+    "/reset-password",
+    async (request, reply) => {
+      try {
+        await resetPassword(
+          request.body.token,
+          request.body.newPassword,
+        );
+        return reply.send({
+          status: "ok",
+          message:
+            "Password reset successfully. Please sign in with your new password.",
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Password reset failed";
+
+        if (
+          message ===
+            "Invalid or expired password reset token" ||
+          message ===
+            "Password must be at least 8 characters long"
+        ) {
+          return reply.code(400).send({
+            status: "error",
+            message,
+          });
+        }
+
+        if (message === "Account is not available") {
+          return reply.code(403).send({
+            status: "error",
+            message,
+          });
+        }
+
+        app.log.error(error);
+        return reply.code(400).send({
+          status: "error",
+          message:
+            "Password reset could not be completed.",
+        });
       }
     },
   );
