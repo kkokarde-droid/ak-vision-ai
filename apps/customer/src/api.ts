@@ -134,6 +134,20 @@ export async function getCurrentUser() {
   return payload.data;
 }
 
+export async function requestPasswordReset(email: string) {
+  return request<{ status: "ok"; message: string }>(`${API_BASE}/auth/forgot-password`, {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(token: string, newPassword: string) {
+  return request<{ status: "ok"; message: string }>(`${API_BASE}/auth/reset-password`, {
+    method: "POST",
+    body: JSON.stringify({ token, newPassword }),
+  });
+}
+
 export async function login(email: string, password: string) {
   return request<{ status: "ok"; data: { user: AuthUser } }>(
     `${API_BASE}/auth/login`,
