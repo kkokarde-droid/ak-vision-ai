@@ -16,7 +16,7 @@ import {
 import {
   requestPasswordReset,
   resetPassword,
-} from "./password-reset.service.js";
+} from "../../common/auth/password-reset.service.js";
 
 const SESSION_COOKIE =
   "ak_vision_session";
