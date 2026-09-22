@@ -113,6 +113,13 @@
       "when": 1789032060000,
       "tag": "0015_seedance_2_0_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790057000000,
+      "tag": "0016_password_reset_tokens",
+      "breakpoints": true
     }
   ]
 }
