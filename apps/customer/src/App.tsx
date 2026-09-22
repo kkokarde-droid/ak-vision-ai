@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   Check,
   Clapperboard,
@@ -30,6 +30,8 @@ import {
   getGenerationOutputs,
   login,
   logout,
+  requestPasswordReset,
+  resetPassword,
   register,
   uploadImage,
   type AuthUser,
@@ -119,12 +121,21 @@ function statusTone(status: GenerationJob["status"]) {
 function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authMode, setAuthMode] = useState<"login" | "register" | "forgot" | "reset">(
+    () => new URLSearchParams(window.location.search).get("token") ? "reset" : "login",
+  );
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authDisplayName, setAuthDisplayName] = useState("");
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [resetToken, setResetToken] = useState(
+    () => new URLSearchParams(window.location.search).get("token") ?? "",
+  );
 
   const [mode, setMode] = useState<GenerationMode>("text_to_video");
   const [prompt, setPrompt] = useState("");
@@ -242,6 +253,74 @@ function App() {
     !isSubmitting &&
     !isUploadingImage;
 
+  async function handleForgotPassword() {
+    if (!forgotEmail.trim()) {
+      setAuthError("Enter your email address.");
+      setAuthNotice(null);
+      return;
+    }
+
+    setAuthSubmitting(true);
+    setAuthError(null);
+    setAuthNotice(null);
+
+    try {
+      await requestPasswordReset(forgotEmail.trim());
+      setAuthNotice(
+        "If an account exists for that email, a password reset link has been sent.",
+      );
+    } catch (requestError) {
+      setAuthError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Password reset is temporarily unavailable.",
+      );
+    } finally {
+      setAuthSubmitting(false);
+    }
+  }
+
+  async function handleResetPassword() {
+    if (!resetToken) {
+      setAuthError("This password reset link is invalid or incomplete.");
+      return;
+    }
+
+    if (newPassword.length < 8) {
+      setAuthError("Password must be at least 8 characters long.");
+      return;
+    }
+
+    if (newPassword !== confirmNewPassword) {
+      setAuthError("Passwords do not match.");
+      return;
+    }
+
+    setAuthSubmitting(true);
+    setAuthError(null);
+    setAuthNotice(null);
+
+    try {
+      await resetPassword(resetToken, newPassword);
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setResetToken("");
+      setAuthMode("login");
+      setAuthNotice(
+        "Password reset successful. Sign in with your new password.",
+      );
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } catch (requestError) {
+      setAuthError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Password reset could not be completed.",
+      );
+    } finally {
+      setAuthSubmitting(false);
+    }
+  }
+
   async function handleAuthentication() {
     if (!authEmail.trim() || !authPassword) {
       setAuthError("Enter your email and password.");
@@ -253,6 +332,7 @@ function App() {
     }
     setAuthSubmitting(true);
     setAuthError(null);
+    setAuthNotice(null);
     try {
       const response = authMode === "login"
         ? await login(authEmail.trim(), authPassword)
@@ -377,6 +457,38 @@ function App() {
   }
 
   if (!authUser) {
+    if (authMode === "forgot") {
+      return (
+        <PasswordRecoveryScreen
+          email={forgotEmail}
+          submitting={authSubmitting}
+          error={authError}
+          notice={authNotice}
+          onEmailChange={(value) => { setForgotEmail(value); setAuthError(null); }}
+          onSubmit={() => void handleForgotPassword()}
+          onBack={() => {
+            setAuthMode("login");
+            setAuthError(null);
+            setAuthNotice(null);
+          }}
+        />
+      );
+    }
+
+    if (authMode === "reset") {
+      return (
+        <PasswordResetScreen
+          password={newPassword}
+          confirmPassword={confirmNewPassword}
+          submitting={authSubmitting}
+          error={authError}
+          onPasswordChange={setNewPassword}
+          onConfirmPasswordChange={setConfirmNewPassword}
+          onSubmit={() => void handleResetPassword()}
+        />
+      );
+    }
+
     return (
       <AuthScreen
         mode={authMode}
@@ -385,7 +497,18 @@ function App() {
         displayName={authDisplayName}
         submitting={authSubmitting}
         error={authError}
-        onModeChange={(nextMode) => { setAuthMode(nextMode); setAuthError(null); }}
+        notice={authNotice}
+        onForgot={() => {
+          setAuthMode("forgot");
+          setAuthError(null);
+          setAuthNotice(null);
+          setForgotEmail(authEmail);
+        }}
+        onModeChange={(nextMode) => {
+          setAuthMode(nextMode);
+          setAuthError(null);
+          setAuthNotice(null);
+        }}
         onEmailChange={setAuthEmail}
         onPasswordChange={setAuthPassword}
         onDisplayNameChange={setAuthDisplayName}
@@ -590,6 +713,8 @@ function AuthScreen({
   displayName,
   submitting,
   error,
+  notice,
+  onForgot,
   onModeChange,
   onEmailChange,
   onPasswordChange,
@@ -602,6 +727,8 @@ function AuthScreen({
   displayName: string;
   submitting: boolean;
   error: string | null;
+  notice: string | null;
+  onForgot: () => void;
   onModeChange: (mode: "login" | "register") => void;
   onEmailChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
@@ -629,15 +756,88 @@ function AuthScreen({
             <div className="mt-7 space-y-4">
               {mode === "register" && <label className="block"><span className="mb-2 block text-xs text-white/40">Display name</span><div className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-black/20 px-4"><UserPlus size={16} className="text-white/25" /><input value={displayName} onChange={(event) => onDisplayNameChange(event.target.value)} autoComplete="name" className="w-full bg-transparent py-3.5 text-sm outline-none" placeholder="Your name" /></div></label>}
               <label className="block"><span className="mb-2 block text-xs text-white/40">Email</span><div className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-black/20 px-4"><Mail size={16} className="text-white/25" /><input value={email} onChange={(event) => onEmailChange(event.target.value)} type="email" autoComplete="email" className="w-full bg-transparent py-3.5 text-sm outline-none" placeholder="you@example.com" /></div></label>
-              <label className="block"><span className="mb-2 block text-xs text-white/40">Password</span><div className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-black/20 px-4"><LockKeyhole size={16} className="text-white/25" /><input value={password} onChange={(event) => onPasswordChange(event.target.value)} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} className="w-full bg-transparent py-3.5 text-sm outline-none" placeholder="••••••••" onKeyDown={(event) => { if (event.key === "Enter") onSubmit(); }} /></div></label>
+              <label className="block"><span className="mb-2 block text-xs text-white/40">Password</span><div className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-black/20 px-4"><LockKeyhole size={16} className="text-white/25" /><input value={password} onChange={(event) => onPasswordChange(event.target.value)} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} className="w-full bg-transparent py-3.5 text-sm outline-none" placeholder="••••••••" onKeyDown={(event) => { if (event.key === "Enter") onSubmit(); }} /></div>{mode === "login" && <div className="mt-2 text-right"><button type="button" onClick={onForgot} className="text-xs font-medium text-white/50 hover:text-white/75">Forgot password?</button></div>}</label>
             </div>
-            {(error || socialNotice) && <div className={["mt-4 rounded-2xl border px-4 py-3 text-sm leading-5", socialNotice && !error ? "border-white/[0.08] bg-white/[0.035] text-white/55" : "border-red-400/20 bg-red-400/5 text-red-200"].join(" ")}>{error || socialNotice}</div>}
+            {(error || socialNotice || notice) && <div className={["mt-4 rounded-2xl border px-4 py-3 text-sm leading-5", (error || socialNotice) ? "border-red-400/20 bg-red-400/5 text-red-200" : "border-white/[0.08] bg-white/[0.035] text-white/55"].join(" ")}>{error || socialNotice || notice}</div>}
             <button type="button" onClick={onSubmit} disabled={submitting} className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3.5 text-sm font-semibold text-black transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-40">{submitting ? <><LoaderCircle size={16} className="animate-spin" /> {mode === "login" ? "Signing in..." : "Creating account..."}</> : <>{mode === "login" ? <LogIn size={16} /> : <UserPlus size={16} />} {mode === "login" ? "Enter studio" : "Create my studio"}</>}</button>
             <div className="mt-5 text-center text-xs text-white/35">{mode === "login" ? <>Don't have an account? <button type="button" onClick={() => onModeChange("register")} className="font-medium text-white/70">Create account</button></> : <>Already have an account? <button type="button" onClick={() => onModeChange("login")} className="font-medium text-white/70">Sign in</button></>}</div>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+
+function RecoveryShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative min-h-screen overflow-hidden bg-[#0d0f14] text-white">
+      <div className="pointer-events-none absolute inset-0"><div className="absolute -left-32 -top-40 h-[500px] w-[500px] rounded-full bg-fuchsia-500/12 blur-[120px]" /><div className="absolute -bottom-48 -right-32 h-[550px] w-[550px] rounded-full bg-cyan-400/10 blur-[120px]" /></div>
+      <div className="relative mx-auto grid min-h-screen max-w-md items-center px-5 py-10">
+        <div className="rounded-[32px] border border-white/[0.08] bg-white/[0.045] p-6 shadow-[0_40px_120px_rgba(0,0,0,0.45)] backdrop-blur-2xl sm:p-8">
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-white text-black"><LockKeyhole size={20} /></div>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PasswordRecoveryScreen({
+  email,
+  submitting,
+  error,
+  notice,
+  onEmailChange,
+  onSubmit,
+  onBack,
+}: {
+  email: string;
+  submitting: boolean;
+  error: string | null;
+  notice: string | null;
+  onEmailChange: (value: string) => void;
+  onSubmit: () => void;
+  onBack: () => void;
+}) {
+  return (
+    <RecoveryShell>
+      <h2 className="mt-6 text-2xl font-semibold tracking-[-0.03em]">Reset your password.</h2>
+      <p className="mt-2 text-sm leading-6 text-white/35">Enter your email and we’ll send a secure password reset link.</p>
+      <label className="mt-7 block"><span className="mb-2 block text-xs text-white/40">Email</span><div className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-black/20 px-4"><Mail size={16} className="text-white/25" /><input value={email} onChange={(event) => onEmailChange(event.target.value)} type="email" autoComplete="email" className="w-full bg-transparent py-3.5 text-sm outline-none" placeholder="you@example.com" onKeyDown={(event) => { if (event.key === "Enter") onSubmit(); }} /></div></label>
+      {(error || notice) && <div className={["mt-4 rounded-2xl border px-4 py-3 text-sm leading-5", error ? "border-red-400/20 bg-red-400/5 text-red-200" : "border-white/[0.08] bg-white/[0.035] text-white/55"].join(" ")}>{error || notice}</div>}
+      <button type="button" onClick={onSubmit} disabled={submitting} className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3.5 text-sm font-semibold text-black disabled:opacity-40">{submitting ? <><LoaderCircle size={16} className="animate-spin" /> Sending reset link...</> : "Send reset link"}</button>
+      <button type="button" onClick={onBack} className="mt-4 w-full text-xs font-medium text-white/45 hover:text-white/75">Back to sign in</button>
+    </RecoveryShell>
+  );
+}
+
+function PasswordResetScreen({
+  password,
+  confirmPassword,
+  submitting,
+  error,
+  onPasswordChange,
+  onConfirmPasswordChange,
+  onSubmit,
+}: {
+  password: string;
+  confirmPassword: string;
+  submitting: boolean;
+  error: string | null;
+  onPasswordChange: (value: string) => void;
+  onConfirmPasswordChange: (value: string) => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <RecoveryShell>
+      <h2 className="mt-6 text-2xl font-semibold tracking-[-0.03em]">Choose a new password.</h2>
+      <p className="mt-2 text-sm leading-6 text-white/35">Use at least 8 characters. Your previous sessions will be signed out.</p>
+      <label className="mt-7 block"><span className="mb-2 block text-xs text-white/40">New password</span><div className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-black/20 px-4"><LockKeyhole size={16} className="text-white/25" /><input value={password} onChange={(event) => onPasswordChange(event.target.value)} type="password" autoComplete="new-password" className="w-full bg-transparent py-3.5 text-sm outline-none" /></div></label>
+      <label className="mt-4 block"><span className="mb-2 block text-xs text-white/40">Confirm password</span><div className="flex items-center gap-3 rounded-2xl border border-white/[0.08] bg-black/20 px-4"><LockKeyhole size={16} className="text-white/25" /><input value={confirmPassword} onChange={(event) => onConfirmPasswordChange(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") onSubmit(); }} type="password" autoComplete="new-password" className="w-full bg-transparent py-3.5 text-sm outline-none" /></div></label>
+      {error && <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-400/5 px-4 py-3 text-sm leading-5 text-red-200">{error}</div>}
+      <button type="button" onClick={onSubmit} disabled={submitting} className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3.5 text-sm font-semibold text-black disabled:opacity-40">{submitting ? <><LoaderCircle size={16} className="animate-spin" /> Updating password...</> : "Update password"}</button>
+    </RecoveryShell>
   );
 }
 
