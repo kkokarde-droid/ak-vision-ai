@@ -43,6 +43,47 @@ export const userCredentials = pgTable(
   ],
 );
 
+export const passwordResetTokens = pgTable(
+  "password_reset_tokens",
+  {
+    id,
+
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+
+    tokenHash: varchar("token_hash", {
+      length: 255,
+    }).notNull(),
+
+    expiresAt: timestamp("expires_at", {
+      withTimezone: true,
+      mode: "date",
+    }).notNull(),
+
+    usedAt: timestamp("used_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+
+    createdAt,
+    updatedAt,
+  },
+  (table) => [
+    uniqueIndex("password_reset_tokens_token_hash_unique")
+      .on(table.tokenHash),
+
+    index("password_reset_tokens_user_idx")
+      .on(table.userId),
+
+    index("password_reset_tokens_expires_at_idx")
+      .on(table.expiresAt),
+  ],
+);
+
 export const authSessions = pgTable(
   "auth_sessions",
   {
@@ -89,6 +130,12 @@ export const authSessions = pgTable(
       .on(table.createdAt),
   ],
 );
+
+export type PasswordResetToken =
+  typeof passwordResetTokens.$inferSelect;
+
+export type NewPasswordResetToken =
+  typeof passwordResetTokens.$inferInsert;
 
 export type UserCredential =
   typeof userCredentials.$inferSelect;
