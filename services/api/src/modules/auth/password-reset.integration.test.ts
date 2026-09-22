@@ -27,7 +27,7 @@ async function createCustomer() {
       status: "active",
       accountType: "individual",
     })
-    .returning({ id: users.id });
+    .returning({ id: users.id, email: users.email });
 
   const user = userResult[0];
   assert.ok(user);
